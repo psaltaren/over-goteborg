@@ -169,6 +169,9 @@ async function run(name: string, p: Profile, report: FpsReport): Promise<void> {
     // A fixed weekday morning, not today's: a weekend has fewer trains and people, and would pass or fail the baseline
     // by the day of the week rather than by the code (a Wednesday, with no power cut and no feast).
     url.searchParams.set('clock', '2026-09-23T08:05');
+    // A fixed weather too, not the city's right now: rain or cloud over the open-air scenes would pass or fail the
+    // baseline by the sky rather than by the code.
+    url.searchParams.set('weather', 'clear');
     // The dev server may reload the page once while it prepares its modules, so start over if that happens.
     for (let attempt = 0; ; attempt++) {
       try {

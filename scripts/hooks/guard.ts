@@ -22,9 +22,11 @@ const DEPLOY = [
   /\baws\s+s3\s+(sync|cp)\b[^;&|\n]*\bdist\b/,
 ];
 
-/** Ways around the pre-push gate. */
+/** Ways around the pre-push gate and the pre-commit secrets guard. */
 const SKIP = [
   /\bgit\b[^;&|\n]*\bpush\b[^;&|\n]*(--no-verify|\s-n\b)/,
+  // `git commit -n` is --no-verify, alone or among other short flags (`-an`).
+  /\bgit\b[^;&|\n]*\bcommit\b[^;&|\n]*(--no-verify|\s-[A-Za-z]*n[A-Za-z]*\b)/,
   /\bSKIP_CHECK=/,
   /-c\s+core\.hooksPath/,
   /\bgit\s+config\b[^;&|\n]*\bcore\.hooksPath\b(?!\s+scripts\/hooks\b)/,

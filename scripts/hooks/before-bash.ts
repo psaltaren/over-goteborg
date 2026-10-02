@@ -1,6 +1,7 @@
 // Claude Code hook (PreToolUse on Bash, see .claude/settings.json): the agent cannot get past the quality gates.
 // - Deploys go through `bun run deploy`, which runs the whole gate first. Deploy commands run directly are blocked.
-// - A push may not skip the pre-push gate (the no-verify flag, SKIP_CHECK, or pointing git at other hooks).
+// - A push may not skip the pre-push gate, nor a commit the secrets guard (the no-verify flag, SKIP_CHECK, or
+//   pointing git at other hooks).
 // Only what the shell runs counts: text in heredocs, quotes and comments (docs being written, say) is left alone.
 // When the user really wants one of these, they run it themselves (`! <command>` in Claude Code). The patterns are
 // in guard.ts, and tests/guard.test.ts pins them down.
@@ -14,6 +15,6 @@ if (why === 'deploy') {
   process.exit(2);
 }
 if (why === 'skip') {
-  console.error('Blocked: pushes go through the pre-push gate (scripts/hooks/pre-push). Fix what it finds instead of skipping it; if the user wants to skip it once, they push themselves.');
+  console.error('Blocked: commits go through the secrets guard (scripts/hooks/pre-commit) and pushes through the pre-push gate (scripts/hooks/pre-push). Fix what they find instead of skipping them; if the user wants to skip one once, they run the command themselves.');
   process.exit(2);
 }

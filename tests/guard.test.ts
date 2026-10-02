@@ -19,6 +19,15 @@ test('pushes that skip the gate are blocked, ordinary ones are not', () => {
   }
 });
 
+test('commits that skip the secrets guard are blocked, ordinary ones are not', () => {
+  for (const command of ['git commit --no-verify -m "x"', 'git commit -n -m "x"', 'git commit -anm "x"', 'git add -A && git commit -an']) {
+    expect(blocked(command)).toBe('skip');
+  }
+  for (const command of ['git commit -m "no-verify, -n"', 'git commit -am "x"', 'git commit --amend --no-edit', 'git add -A && git commit -m "x" && git push']) {
+    expect(blocked(command)).toBeNull();
+  }
+});
+
 test('text is not a command: heredocs, quotes and comments pass', () => {
   expect(blocked("cat > x.md <<'EOF'\nNever run `wrangler deploy`, never push with --no-verify.\nEOF\necho done")).toBeNull();
   expect(blocked("grep -rn 'wrangler deploy' scripts")).toBeNull();

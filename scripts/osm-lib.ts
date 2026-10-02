@@ -13,7 +13,7 @@ export const LICENSE = 'Map data © OpenStreetMap contributors, available under 
 const CACHE = 'node_modules/.cache/osm';
 /** Overpass's main server, then a mirror for when it turns us away. */
 const OVERPASS = ['https://overpass-api.de/api/interpreter', 'https://maps.mail.ru/osm/tools/overpass/api/interpreter'];
-const AGENT = 'under-stockholm/1.0 (https://understockholm.com)';
+const AGENT = 'over-goteborg/1.0 (https://github.com/psaltaren/over-goteborg)';
 /** Round Stockholm, for finding a station by name. */
 const AREA = '(59.1,17.6,59.6,18.4)';
 

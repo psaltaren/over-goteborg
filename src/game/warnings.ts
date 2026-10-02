@@ -3,7 +3,7 @@ import text from './i18n/sv.json';
 import { relayFeed } from './relay';
 
 /**
- * SMHI's weather warnings for Stockholms län (open data, no key), read through the relay.
+ * SMHI's weather warnings for Västra Götalands län (open data, no key), read through the relay.
  * A yellow, orange or red warning is read out by the train speaker between
  * stations and shown on the boards, like SL's own traffic information, and
  * while one for rain, snow or thunder is in force most passengers come down
@@ -12,8 +12,8 @@ import { relayFeed } from './relay';
  * No three.js here: the relay imports it.
  */
 
-/** SMHI's id for Stockholms län. */
-export const STOCKHOLM_COUNTY = 1;
+/** SMHI's id for Västra Götalands län. */
+export const COUNTY = 14;
 const POLL = 600;
 /** Seconds without a successful poll before the warnings are dropped. */
 const STALE = 60 * 60;
@@ -54,10 +54,10 @@ interface ApiWarning {
   warningAreas?: ApiArea[];
 }
 
-const inCounty = (a: ApiArea) => !!a.affectedAreas?.some((c) => c.id === STOCKHOLM_COUNTY);
+const inCounty = (a: ApiArea) => !!a.affectedAreas?.some((c) => c.id === COUNTY);
 
-/** SMHI's list cut down to the areas in Stockholms län and the fields read here, for the relay to pass on. */
-export function forStockholm(body: unknown): Array<ApiWarning & { warningAreas: ApiArea[] }> {
+/** SMHI's list cut down to the areas in Västra Götalands län and the fields read here, for the relay to pass on. */
+export function forCounty(body: unknown): Array<ApiWarning & { warningAreas: ApiArea[] }> {
   if (!Array.isArray(body)) return [];
   return (body as ApiWarning[])
     .map((w) => ({
@@ -68,16 +68,16 @@ export function forStockholm(body: unknown): Array<ApiWarning & { warningAreas: 
         approximateEnd: a.approximateEnd,
         warningLevel: { code: a.warningLevel?.code },
         eventDescription: { sv: a.eventDescription?.sv },
-        affectedAreas: [{ id: STOCKHOLM_COUNTY }],
+        affectedAreas: [{ id: COUNTY }],
       })),
     }))
     .filter((w) => w.warningAreas.length);
 }
 
-/** Warnings for Stockholms län that matter at `now` (epoch seconds), most severe first. */
+/** Warnings for Västra Götalands län that matter at `now` (epoch seconds), most severe first. */
 export function parseWarnings(body: unknown, now: number): WeatherWarning[] {
   const out: WeatherWarning[] = [];
-  for (const w of forStockholm(body)) {
+  for (const w of forCounty(body)) {
     const event = w.event?.code as WarningEvent;
     if (!EVENTS.includes(event)) continue;
     for (const a of w.warningAreas) {

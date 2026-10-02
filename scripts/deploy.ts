@@ -1,4 +1,4 @@
-// The only way the site goes live: `bun run deploy` (to https://understockholm.com/, or SITE_URL if set). It deploys
+// The only way the site goes live: `bun run deploy` (to SITE_URL, for now the workers.dev address). It deploys
 // exactly what is on GitHub's main, and only after the quality gate has passed on it:
 //   1. the working tree must be clean and HEAD pushed (on origin/main), so what is built is what was checked;
 //   2. the address (SITE_URL, by default the game's own domain): the canonical, hreflang and preview links need it;
@@ -54,9 +54,9 @@ const commit = await clean();
 if ((await sh(['git', 'fetch', '--quiet', 'origin', 'main'], {}, true)).code !== 0) stop('could not reach origin to check that HEAD is pushed.');
 if ((await sh(['git', 'merge-base', '--is-ancestor', 'HEAD', 'origin/main'], {}, true)).code !== 0) stop('HEAD is not on origin/main. Push it first (the pre-push gate runs), then deploy.');
 
-// 2. The real address: the game's domain (wrangler.jsonc's routes), unless SITE_URL says otherwise.
-const SITE_URL = (process.env.SITE_URL ?? 'https://understockholm.com/').replace(/\/?$/, '/');
-if (!/^https:\/\/[^/]+\/$/.test(SITE_URL)) stop('SITE_URL must be the site\'s https address, for example SITE_URL=https://understockholm.com/ bun run deploy.');
+// 2. The real address. There is no custom domain yet, so SITE_URL must say it (the workers.dev address).
+const SITE_URL = (process.env.SITE_URL ?? '').replace(/\/?$/, '/');
+if (!/^https:\/\/[^/]+\/$/.test(SITE_URL)) stop('SITE_URL must be the site\'s https address, for example SITE_URL=https://over-goteborg.<account>.workers.dev/ bun run deploy.');
 const shape: Record<string, string> = LANDING ? { LANDING_ONLY: '1' } : WITH_RECORDINGS ? {} : { RECORDINGS: '0' };
 const buildEnv: Record<string, string> = { SITE_URL, ...shape };
 const what = LANDING ? ', the landing page alone' : WITH_RECORDINGS ? ', the game with the recorded announcements' : ', the game without the recorded announcements';

@@ -1,5 +1,5 @@
 /**
- * Real headlines for the newspapers in the game, from P4 Stockholm's open
+ * Real headlines for the newspapers in the game, from P4 Göteborg's open
  * Atom feed at Sveriges Radio, read through the relay like every live feed
  * (`relay.ts`, `server/feeds.ts`), so SR is asked twice an hour however many
  * play. Like a printed morning paper, today's edition carries yesterday's

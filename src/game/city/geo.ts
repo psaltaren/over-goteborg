@@ -9,17 +9,19 @@ export const ORIGIN = { lat: 57.711215, lon: 11.972921 } as const;
 /** Which way +x points, as a compass bearing in degrees: along those platforms toward Haga (west-south-west). */
 export const HEADING = 252.25;
 
-const EAST = 111_320 * Math.cos((ORIGIN.lat * Math.PI) / 180);
-const NORTH = 110_540;
+/** Meters per degree of longitude and of latitude at the origin, on the WGS 84 ellipsoid (the usual series). */
+const PHI = (ORIGIN.lat * Math.PI) / 180;
+const EAST = 111_412.84 * Math.cos(PHI) - 93.5 * Math.cos(3 * PHI);
+const NORTH = 111_132.92 - 559.82 * Math.cos(2 * PHI) + 1.175 * Math.cos(4 * PHI);
 const SIN = Math.sin((HEADING * Math.PI) / 180);
 const COS = Math.cos((HEADING * Math.PI) / 180);
 
 export type Pt = [number, number];
 
 /**
- * A place's latitude and longitude in the game's frame, in meters. Flat (an equirectangular map round the origin):
- * over the two kilometers the game covers it is off by less than half a meter at the edges, the same for every layer,
- * so the tracks, the buildings and the stops all agree with each other.
+ * A place's latitude and longitude in the game's frame, in meters. Flat (an equirectangular map round the origin, at
+ * the ellipsoid's scale there): over the kilometer or so the game reaches north and south of the origin the scale
+ * east-west drifts by about 0.03%, under half a meter at the edges, and every layer is drawn the same way.
  */
 export function toGame(lat: number, lon: number): Pt {
   const e = (lon - ORIGIN.lon) * EAST;

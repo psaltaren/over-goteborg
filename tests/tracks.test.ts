@@ -2,6 +2,8 @@ import { describe, expect, test } from 'bun:test';
 import tracks from '../src/game/city/osm/tracks.json';
 import { PLAY } from '../src/game/city/geo';
 import { FIXES } from '../scripts/gbg-track-fixes';
+import { closeOpposite } from '../scripts/gbg-tracks';
+import { TRAM_WIDTH } from '../src/game/layout';
 import { CHORD, curveAt, MIN_RADIUS, prevsOf, readLinks, type TrackFile } from '../src/game/city/trackData';
 
 const file = tracks as unknown as TrackFile;
@@ -67,6 +69,29 @@ describe('the tram tracks', () => {
     }
   });
 
+  test('keep double track a car\'s width apart, so trams meet on it', () => {
+    // Closer, and the blocks on the two would conflict: the block pass would run it as single track.
+    const close = closeOpposite(links);
+    expect(close.meters).toBe(0);
+  });
+
+  test('list no conflict between two blocks of one track, one after the other', () => {
+    // A tram passes both in turn, as through the short link a moved switch toe leaves: following, not conflicting.
+    const reach = 2 * TRAM_WIDTH;
+    /** Whether a tram leaving link `from` `d` meters short of its end comes to `s` on link `to` within `reach`. */
+    const reaches = (from: number, d: number, to: number, s: number): boolean =>
+      d < reach && links[from].next.some((id) => (id === to ? d + s < reach : reaches(id, d + links[id].length, to, s)));
+    const bad: string[] = [];
+    for (const [a, b] of file.conflicts) {
+      for (const [la, a0, a1] of file.blocks[a].spans) {
+        for (const [lb, b0, b1] of file.blocks[b].spans) {
+          if (reaches(la, links[la].length - a1, lb, b0) || reaches(lb, links[lb].length - b1, la, a0)) bad.push(`${a},${b}`);
+        }
+      }
+    }
+    expect(bad).toEqual([]);
+  });
+
   test('list each conflict between two blocks once', () => {
     const seen = new Set<string>();
     for (const [a, b] of file.conflicts) {
@@ -79,8 +104,9 @@ describe('the tram tracks', () => {
     expect(file.conflicts.length).toBeGreaterThan(100);
   });
 
-  test('have the stops of the inner city on them', () => {
+  test('have the stops of the inner city on them, within 3 m of where OSM has them', () => {
     for (const s of file.stops) {
+      expect(s.off).toBeLessThanOrEqual(3);
       expect(s.s).toBeGreaterThanOrEqual(0);
       expect(s.s).toBeLessThanOrEqual(links[s.link].length + 0.01);
     }

@@ -435,3 +435,12 @@ export const CANOPY = {
   cutGap: 1.5,
   cutStep: 2,
 };
+
+// ---- Gothenburg's trams in the street (src/game/city). ----
+
+/** A tram car's width, the M32's and the M33's: two tracks closer than this, centre to centre, cannot both hold a tram. */
+export const TRAM_WIDTH = 2.65;
+/** The narrowest curve a tram takes, the M32's, which the other cars manage too. */
+export const TRAM_MIN_RADIUS = 18;
+/** Double track, centre to centre, as Gothenburg's streets have it. */
+export const TRAM_TRACK_SPACING = 3.2;

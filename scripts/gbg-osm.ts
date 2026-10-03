@@ -36,8 +36,8 @@ if (only !== 'tiles') {
   writeJson(`${OUT}/tracks.json`, {
     license: LICENSE,
     format: 'bun scripts/gbg-osm.ts. The tram tracks in the city frame (src/game/city/geo.ts), meters. links: a track one way, from one junction to the next ' +
-      '(from/to: OSM nodes, -1 where it runs out of the area), the links a tram may go on to (next), the same track the other way (twin), its length and points ' +
-      '(centimeters, the first as it is and each next from the one before, eased so no curve is tighter than 18 m). stops: OSM\'s tram stops, as a link and s along it. ' +
+      '(from/to: an OSM node; a switch toe moved back from a node, as 1e12 times the toes moved from it plus the node; -1 where it runs out of the area), the links a tram may go on to (next), the same track the other way (twin), its length and points ' +
+      '(centimeters, the first as it is and each next from the one before, eased so no curve is tighter than 18 m). stops: OSM\'s tram stops, as a link, s along it and how far the node lies off it. ' +
       'blocks: one tram at a time, as [link, from s, to s] (on the twin too). conflicts: pairs of blocks that cannot hold trams at once (a switch, a crossing).',
   }, {
     links: links.map(({ pts, length, ...l }) => ({ ...l, length: Math.round(length * 100) / 100, pts: packCm(thin(pts)) })),
@@ -57,14 +57,16 @@ if (only !== 'tracks') {
   mkdirSync(dir, { recursive: true });
   for (const f of readdirSync(dir)) rmSync(`${dir}/${f}`);
   let written = 0, buildings = 0;
+  // The relations' rings and the coast, joined once in the city frame and moved to each square.
+  const city = await streetParts(els, toGame);
   for (const tile of cityTiles()) {
     const [cx, cz] = [(tile.rect.x0 + tile.rect.x1) / 2, (tile.rect.z0 + tile.rect.z1) / 2];
     // Each square in its own numbers, from its middle, as the street files are from a station's.
-    const local = (lat: number, lon: number): Pt => {
-      const [x, z] = toGame(lat, lon);
-      return [x - cx, z - cz];
-    };
-    const layers = streetLayers(els, await streetParts(els, local), local, { cx: 0, cz: 0, hx: TILE / 2, hz: TILE / 2, round: false });
+    const shift = (p: Pt): Pt => [p[0] - cx, p[1] - cz];
+    const local = (lat: number, lon: number): Pt => shift(toGame(lat, lon));
+    const parts = new Map([...city.parts].map(([id, { outer, inner }]) => [id, { outer: outer.map((r) => r.map(shift)), inner: inner.map((r) => r.map(shift)) }]));
+    const coast = city.coast.map((c) => c.map(shift));
+    const layers = streetLayers(els, { parts, coast }, local, { cx: 0, cz: 0, hx: TILE / 2, hz: TILE / 2, round: false });
     if (!layers.buildings.length && !layers.roads.length && !layers.areas.length) continue;
     writeJson(`${dir}/${tile.key}.json`, {
       license: LICENSE,
@@ -88,9 +90,10 @@ function thin(pts: Pt[]): Pt[] {
   const run = (a: number, b: number) => {
     let worst = -1, far = 0.005;
     const [ax, az] = pts[a], [bx, bz] = pts[b];
-    const len = Math.hypot(bx - ax, bz - az) || 1;
+    const len = Math.hypot(bx - ax, bz - az);
     for (let i = a + 1; i < b; i++) {
-      const d = Math.abs((bx - ax) * (az - pts[i][1]) - (ax - pts[i][0]) * (bz - az)) / len;
+      // Off the line through the two, or, where they are one point (a loop closing on itself), off that point.
+      const d = len > 1e-9 ? Math.abs((bx - ax) * (az - pts[i][1]) - (ax - pts[i][0]) * (bz - az)) / len : Math.hypot(pts[i][0] - ax, pts[i][1] - az);
       if (d > far) [worst, far] = [i, d];
     }
     if (worst < 0) return;

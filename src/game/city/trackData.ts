@@ -2,10 +2,11 @@
 // polyline in the city frame (`geo.ts`) that a tram runs along one way, with the links it may go on to at its end,
 // and the blocks no two trams may be in at once. Shared by the data scripts, the tests and the game; no three.js.
 
+import { TRAM_MIN_RADIUS } from '../layout';
 import type { Pt } from './geo';
 
-/** The narrowest curve a tram takes, in meters: the M32's, which the other cars manage too. */
-export const MIN_RADIUS = 18;
+/** The narrowest curve a tram takes, in meters (`layout.ts`). */
+export const MIN_RADIUS = TRAM_MIN_RADIUS;
 /** Curves are measured over this far either side of a point, about a bogie's length. */
 export const CHORD = 3;
 
@@ -13,7 +14,10 @@ export interface Link {
   id: number;
   /** The OSM ways it was drawn from, in order. */
   ways: number[];
-  /** The OSM node it starts and ends at, or -1 where it runs out of the area. */
+  /**
+   * The junction it starts and ends at: an OSM node, or where a switch's toe was moved back from one (`TOE_NODE` times
+   * the toes moved from that node so far, plus the node), or -1 where it runs out of the area.
+   */
   from: number;
   to: number;
   /** The same track the other way, for the few tracks run both ways. */
@@ -30,6 +34,8 @@ export interface Stop {
   osm: number;
   link: number;
   s: number;
+  /** How far the node lies from the track as eased, in meters. */
+  off: number;
 }
 
 /**
@@ -106,17 +112,6 @@ export function radius(a: Pt, b: Pt, c: Pt): number {
   const cross = (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]);
   if (Math.abs(cross) < 1e-9) return Infinity;
   return (Math.hypot(b[0] - c[0], b[1] - c[1]) * Math.hypot(a[0] - c[0], a[1] - c[1]) * Math.hypot(a[0] - b[0], a[1] - b[1])) / (2 * Math.abs(cross));
-}
-
-/** The tightest curve along a polyline, measured every meter over `CHORD` either side, with where it lies. */
-export function tightest(pts: Pt[]): { r: number; s: number } {
-  const length = polylineLength(pts);
-  let best = { r: Infinity, s: 0 };
-  for (let s = CHORD; s <= length - CHORD + 1e-6; s += 1) {
-    const r = radius(pointAt(pts, s - CHORD), pointAt(pts, s), pointAt(pts, s + CHORD));
-    if (r < best.r) best = { r, s };
-  }
-  return best;
 }
 
 /** The direction a polyline sets off in at its start, over its first `over` meters. */

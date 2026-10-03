@@ -25,7 +25,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { streetKey } from '../src/game/world/osmKey';
 import { LICENSE, overpass, packed, pause, stationFrame, stationQuery, stations as allStations, writeJson, type Pt, type Station } from './osm-lib';
-import { streetLayers, streetParts, streetQuery, type Region } from './osm-layers';
+import { streetLayers, streetParts, streetQuery, wholeRelations, type Region } from './osm-layers';
 
 const OUT = 'src/game/world/osm/streets';
 /**
@@ -75,6 +75,7 @@ async function fetchStation(s: Station): Promise<Array<{ exit: Exit; data: Recor
   const reach = Math.min(800, Math.max(...exits.map(({ region: r }) => Math.hypot(r.cx, r.cz) + Math.hypot(r.hx, r.hz))) + 20);
   await pause();
   const els = await overpass(`${stationQuery(s)}${streetQuery(`around.s:${reach}`, `around.s:${reach + 400}`)}`, `${tag}-b`);
+  await wholeRelations(els, `${tag}-r`);
   const city = await streetParts(els, toGame);
 
   const results: Array<{ exit: Exit; data: Record<string, unknown> }> = [];

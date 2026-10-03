@@ -35,16 +35,6 @@ export const FIXES: TrackFixes = {
     1291064383: 1,
   },
   forbid: [],
-  tight: {
-    1277523359: {
-      radius: 17,
-      why: 'Drottningtorget, west of the stop: two switches drawn 1 m apart, a double switch, so the turn through them cannot ' +
-        'be spread over more than a few meters; eased to 17.5 m (October 2026). A redraw in OSM would bring it to 18.',
-    },
-    1501418352: {
-      radius: 15,
-      why: 'Vasaplatsen, past the playable area in the fog: switches drawn close at the end of the tracks the game keeps; ' +
-        'eased to 16.4 m (October 2026). Trams only pass here out of sight.',
-    },
-  },
+  // None at present (October 2026): every junction eases to 18 m.
+  tight: {},
 };

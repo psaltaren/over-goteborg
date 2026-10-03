@@ -11,6 +11,19 @@ describe('the city frame', () => {
     }
   });
 
+  test('measures meters as they are, at Gothenburg\'s latitude', () => {
+    // The WGS 84 ellipsoid's radii of curvature, in closed form (independent of the series geo.ts uses): meters per
+    // degree north (the meridian's M) and east (the prime vertical's N, times the cosine). The frame was once 0.75% short
+    // north to south and 0.24% east to west; this holds it to 0.05%.
+    const a = 6_378_137, e2 = 0.00669437999014, rad = Math.PI / 180;
+    const phi = 57.707 * rad, w = 1 - e2 * Math.sin(phi) ** 2;
+    const north = (a * (1 - e2)) / w ** 1.5 * rad, east = (a / Math.sqrt(w)) * Math.cos(phi) * rad;
+    const [nx, nz] = toGame(57.716, 11.97), [sx, sz] = toGame(57.698, 11.97);
+    expect(Math.abs(Math.hypot(nx - sx, nz - sz) / (0.018 * north) - 1)).toBeLessThan(0.0005);
+    const [ex, ez] = toGame(57.707, 11.99), [wx, wz] = toGame(57.707, 11.95);
+    expect(Math.abs(Math.hypot(ex - wx, ez - wz) / (0.04 * east) - 1)).toBeLessThan(0.0005);
+  });
+
   test('runs along Västlänken at Centralen, toward Haga', () => {
     // The ends of Västlänken's track 22 either side of Centralen, from OSM: east of the station, then toward Haga.
     const [ax, az] = toGame(57.7121742, 11.978778);

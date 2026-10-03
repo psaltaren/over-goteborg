@@ -276,9 +276,26 @@ export interface Layers {
   names: string[];
   areas: number[][];
   trees: Pt[];
-  /** Square meters of building within 150 m of the region's middle, and whether that makes it the city (paved between the houses). */
+  /**
+   * Square meters of building within 150 m of the region's middle, and whether that makes it the city (paved between
+   * the houses): more than a quarter or so of the ground it is measured over (`builtArea`).
+   */
   built: number;
   urban: boolean;
+}
+
+/**
+ * The ground `built` is measured over: the 150 m circle round the region's middle, as far as the region reaches. All
+ * of it for a station's street (a 260 m circle, or a wider rectangle in the open); for a city square of 250 m, the
+ * square's part of it, or the share of building would read low and dense blocks would come out as grass.
+ */
+export function builtArea({ hx, hz, round }: Region): number {
+  const r = 150;
+  if (round) return Math.PI * Math.min(r, hx) ** 2;
+  if (hx >= r && hz >= r) return Math.PI * r * r;
+  let n = 0;
+  for (let x = -r + 1; x < r; x += 2) for (let z = -r + 1; z < r; z += 2) if (x * x + z * z <= r * r && Math.abs(x) <= hx && Math.abs(z) <= hz) n++;
+  return n * 4;
 }
 
 /**
@@ -290,7 +307,6 @@ export function streetLayers(els: El[], { parts, coast }: { parts: Parts; coast:
   const { cx, cz, hx, hz, round } = region;
   const [x0, x1, z0, z1] = [cx - hx, cx + hx, cz - hz, cz + hz];
   const within = ([x, z]: Pt) => (round ? Math.hypot(x - cx, z - cz) <= hx : x >= x0 && x <= x1 && z >= z0 && z <= z1);
-  const mid = (ring: Pt[]): Pt => [ring.reduce((a, p) => a + p[0], 0) / ring.length, ring.reduce((a, p) => a + p[1], 0) / ring.length];
 
   // Buildings: the outline of each (a multipolygon's outer rings), whole where its middle is within reach.
   const buildings: Array<{ id: number; b: Array<number | null> }> = [];
@@ -301,9 +317,9 @@ export function streetLayers(els: El[], { parts, coast }: { parts: Parts; coast:
     const outlines = e.type === 'way' && e.geometry ? [g(e.geometry).slice(0, -1)]
       : e.type === 'relation' ? parts.get(e.id)?.outer ?? [] : [];
     for (const ring of outlines) {
-      if (ring.length < 3 || !within(mid(ring))) continue;
+      if (ring.length < 3 || !within(middle(ring))) continue;
       const simple = simplify(ring, SIMPLIFY);
-      if (Math.hypot(...mid(simple).map((v, k) => v - (k ? cz : cx)) as Pt) < 150) built += Math.abs(area(simple));
+      if (Math.hypot(...middle(simple).map((v, k) => v - (k ? cz : cx)) as Pt) < 150) built += Math.abs(area(simple));
       buildings.push({ id: e.id, b: [Math.round(heightOf(t) * 10), colourOf(t), roofOf(t), ...packed(simple)] });
     }
   }
@@ -356,6 +372,6 @@ export function streetLayers(els: El[], { parts, coast }: { parts: Parts; coast:
 
   const trees = els.filter((e) => e.type === 'node' && e.tags?.natural === 'tree').map((e) => toGame(e.lat!, e.lon!)).filter(within).slice(0, 600);
   // Dense enough to be the city: paved between the houses; else grass.
-  const urban = built / (Math.PI * 150 * 150) > 0.24;
+  const urban = built / builtArea(region) > 0.24;
   return { buildings: buildings.map((b) => b.b), roads: roads.map((r) => r.r), names, areas: areas.map((a) => a.a), trees, built, urban };
 }

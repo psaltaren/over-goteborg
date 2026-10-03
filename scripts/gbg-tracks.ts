@@ -19,6 +19,7 @@
  *    wherever their paths do not touch, as they do in the street.
  */
 import type { Pt, Rect } from '../src/game/city/geo';
+import { TRAM_TRACK_SPACING, TRAM_WIDTH } from '../src/game/layout';
 import { CHORD, MIN_RADIUS, curveAt, endDir, pointAt, polylineLength, prevsOf, radius, resample, startDir, turn, type Block, type Link, type Stop } from '../src/game/city/trackData';
 import type { TrackFixes } from './gbg-track-fixes';
 import { clipLine } from './osm-layers';
@@ -27,28 +28,38 @@ import type { El } from './osm-lib';
 /** The sharpest turn from one track to the next at a junction, in degrees. */
 const MAX_TURN = 45;
 /**
- * Two tracks closer than this, centre to centre, cannot both hold a tram: the cars are 2.65 m wide. OSM draws most
+ * Two tracks closer than this, centre to centre, cannot both hold a tram: a car's width (`layout.ts`). OSM draws most
  * double track 3.1 to 3.6 m apart, but a kilometer or so a little tighter, so a wider margin would join every junction
  * along those stretches into one.
  */
-const CLEAR = 2.65;
-/** Double track drawn tighter than this is moved apart to it: the street's is about 3.2 m centre to centre. */
-const SPACING = 3.2;
+const CLEAR = TRAM_WIDTH;
+/** Double track drawn tighter than this is moved apart to it, and kept there through the easing (`layout.ts`). */
+const SPACING = TRAM_TRACK_SPACING;
+/** How strongly the easing keeps two tracks run opposite ways as far apart as `separate` left them. */
+const KEEP_APART = 50;
+/**
+ * Within this far of a junction, double track is left as OSM draws it: tracks close in, cross and change sides there
+ * (Drottningtorget, Järntorget), and spacing them would move the switches.
+ */
+const NEAR_JUNCTION = 15;
 /** Blocks are at most this long: short, so a tram can follow close behind another, as at a busy stop. */
 const BLOCK = 10;
 /** Curves are eased to a little more than the least radius, so rounding to centimeters cannot take them under it. */
 const EASE_TO = MIN_RADIUS * 1.06;
-/** How stiff the bend through a junction is to begin with, so rails leave a switch without a knee (`easeAll`). */
-const JUNCTION_STIFF = 200;
+/** How strongly the easing draws a bend to the radius it aims for (`easeAll`), against a point's pull of 1 toward OSM. */
+const BEND = 400;
 /** A diverging or merging track that meets its switch at more than this angle gets its toe moved (`toes`). */
 const KNEE = 8;
 /** How far the toe may be moved, and how far the new curve may then lie from the track as OSM draws it. */
 const TOE_REACH = 30;
 const TOE_OFF = 1.5;
-/** Junctions made by moving a toe are numbered from here, clear of OSM's node ids. */
+/**
+ * Junctions made by moving a toe are numbered `TOE_NODE` times the toes moved from that node so far plus the node,
+ * clear of OSM's node ids and the same from one build to the next as long as OSM is.
+ */
 const TOE_NODE = 1e12;
-/** How far a stop node may lie from the track and still be put on it. */
-const STOP_REACH = 4;
+/** How far a stop node may lie from the track and still be put on it: the plan's 3 m. */
+const STOP_REACH = 3;
 
 type Way = El & { nodes: number[] };
 
@@ -160,7 +171,10 @@ export function buildTracks(els: El[], toGame: (lat: number, lon: number) => Pt,
       });
     });
   }
-  const links: Link[] = cut.map((c, id) => ({ id, ways: c.ways, from: c.from, to: c.to, twin: null, next: [], length: polylineLength(c.pts), pts: resample(c.pts, 1) }));
+  const links: Link[] = cut.map((c, id) => {
+    const pts = resample(c.pts, 1);
+    return { id, ways: c.ways, from: c.from, to: c.to, twin: null, next: [], length: polylineLength(pts), pts };
+  });
   // The same track both ways: the reverse of another link, point for point.
   for (const a of links) {
     if (a.twin !== null) continue;
@@ -170,7 +184,8 @@ export function buildTracks(els: El[], toGame: (lat: number, lon: number) => Pt,
       b.twin = a.id;
     }
   }
-  const osmPts = links.map((l) => l.pts);
+  // Each way as OSM draws it, to measure how far the easing moves the track from it.
+  const drawn = new Map(ways.map((w) => [w.id, w.geometry!.map((g) => toGame(g.lat, g.lon))]));
 
   // ---- 2. Turns. ----
   const forbidden = new Set(fixes.forbid.map(([a, b]) => `${a}>${b}`));
@@ -192,18 +207,16 @@ export function buildTracks(els: El[], toGame: (lat: number, lon: number) => Pt,
 
   // ---- 5. Easing: the whole network as one smoothing spline. ----
   const tight = easeAll(links, prevs, fixes.tight);
+  const close = closeOpposite(links);
+  if (close.meters) report.push(`WARN ${close.meters} m of track lies closer than ${CLEAR} m to a track run the other way (at most ${close.least.toFixed(2)} m, at ${close.at.map(Math.round).join(', ')})`);
   if (tight.length) report.push(`WARN ${tight.length} places still curve tighter than ${MIN_RADIUS} m (${tight.slice(0, 6).join('; ')}): fix them in scripts/gbg-track-fixes.ts`);
-  // How far the track now lies from the nearest track as OSM draws it.
+  // How far the track now lies from the ways it was drawn from, as OSM draws them.
   let off = 0, offAt: Pt = [0, 0];
-  const boxes = osmPts.map((q) => [Math.min(...q.map((v) => v[0])) - 10, Math.max(...q.map((v) => v[0])) + 10, Math.min(...q.map((v) => v[1])) - 10, Math.max(...q.map((v) => v[1])) + 10]);
   for (const l of links) {
+    const own = l.ways.map((id) => drawn.get(id)!).filter(Boolean);
     for (const p of l.pts) {
-      let d = Infinity;
-      osmPts.forEach((q, k) => {
-        const [x0, x1, z0, z1] = boxes[k];
-        if (p[0] >= x0 && p[0] <= x1 && p[1] >= z0 && p[1] <= z1) d = Math.min(d, project(q, p).d);
-      });
-      if (d > off && d < Infinity) [off, offAt] = [d, p];
+      const d = Math.min(...own.map((q) => project(q, p).d));
+      if (d > off) [off, offAt] = [d, p];
     }
   }
   report.push(`easing moved the track at most ${off.toFixed(1)} m from OSM (at ${offAt.map((v) => v.toFixed(0)).join(', ')})`);
@@ -218,14 +231,18 @@ export function buildTracks(els: El[], toGame: (lat: number, lon: number) => Pt,
     if (e.type !== 'node' || e.tags?.railway !== 'tram_stop' || !e.tags.name) continue;
     const p = toGame(e.lat!, e.lon!);
     if (!inside(p)) continue;
-    // On the links drawn through the node, else the nearest track.
-    const on = links.filter((_, k) => cut[k]?.nodes.includes(e.id));
-    const candidates = (on.length ? on : links).map((l) => ({ l, ...project(l.pts, p) })).filter((c) => c.d <= STOP_REACH).sort((p, q) => p.d - q.d);
-    if (!candidates.length) {
+    // On the nearest link drawn from a way through the node (and its twin, a track run both ways), else the nearest
+    // track. By way rather than by node: moving a switch's toe makes links no OSM node list knows.
+    const through = new Set(ways.filter((w) => w.nodes.includes(e.id)).map((w) => w.id));
+    const on = links.filter((l) => l.ways.some((w) => through.has(w)));
+    const best = (on.length ? on : links).map((l) => ({ l, ...project(l.pts, p) })).sort((a, b) => a.d - b.d)[0];
+    if (!best || best.d > STOP_REACH) {
       away++;
       continue;
     }
-    for (const c of on.length ? candidates : candidates.slice(0, 1)) stops.push({ name: e.tags.name, osm: e.id, link: c.l.id, s: Math.round(c.s * 100) / 100 });
+    const r2 = (v: number) => Math.round(v * 100) / 100;
+    stops.push({ name: e.tags.name, osm: e.id, link: best.l.id, s: r2(best.s), off: r2(best.d) });
+    if (best.l.twin !== null) stops.push({ name: e.tags.name, osm: e.id, link: best.l.twin, s: r2(best.l.length - best.s), off: r2(best.d) });
   }
   if (away) report.push(`WARN ${away} tram stops lie more than ${STOP_REACH} m from any track`);
 
@@ -243,7 +260,14 @@ export function buildTracks(els: El[], toGame: (lat: number, lon: number) => Pt,
  */
 function toes(links: Link[]): number {
   let moved = 0;
-  const prevsOf = (id: number) => links.filter((l) => l.next.includes(id));
+  const into = (id: number) => links.filter((l) => l.next.includes(id));
+  const fromNode = new Map<number, number>();
+  /** A toe moved back from junction `node`: numbered from it, so the same toe gets the same id each build. */
+  const toeNode = (node: number) => {
+    const k = (fromNode.get(node) ?? 0) + 1;
+    fromNode.set(node, k);
+    return TOE_NODE * k + node;
+  };
   const hermite = (a: Pt, ta: Pt, b: Pt, tb: Pt): Pt[] => {
     const m = dist(a, b);
     const steps = Math.max(4, Math.round(m));
@@ -295,18 +319,19 @@ function toes(links: Link[]): number {
   };
   for (const o of [...links]) {
     // A diverging track: one link leads into it, and it is not that link's straightest way on.
-    const into = prevsOf(o.id);
-    if (o.twin !== null || into.length !== 1) continue;
-    const i = into[0];
+    const leads = into(o.id);
+    if (o.twin !== null || leads.length !== 1) continue;
+    const i = leads[0];
     if (i.twin !== null || i.next.length < 2 || turn(endDir(i.pts), startDir(o.pts, 3)) <= KNEE) continue;
     const straight = i.next.map((id) => ({ id, t: turn(endDir(i.pts), startDir(links[id].pts)) })).sort((p, q) => p.t - q.t)[0].id;
     if (straight === o.id) continue;
     const f = fit(i.pts, o.pts);
     if (!f) continue;
-    const node = TOE_NODE + moved;
+    const node = toeNode(i.to);
     const [head, tail] = cutAt(i.pts, i.length - f.x);
     const rest = i.next.filter((id) => id !== o.id);
-    const b = fresh({ ways: [i.ways[i.ways.length - 1]], from: node, to: i.to, twin: null, next: rest, pts: tail });
+    // Which of the through link's ways its tail runs along is not kept, so it takes them all.
+    const b = fresh({ ways: [...i.ways], from: node, to: i.to, twin: null, next: rest, pts: tail });
     i.pts = head;
     i.length = polylineLength(head);
     i.to = node;
@@ -315,22 +340,24 @@ function toes(links: Link[]): number {
     o.pts = resample([...f.curve, ...after.slice(1)], 1);
     o.length = polylineLength(o.pts);
     o.from = node;
+    // It now sets off along the through track's last way.
+    if (!o.ways.includes(i.ways[i.ways.length - 1])) o.ways = [i.ways[i.ways.length - 1], ...o.ways];
     moved++;
   }
   for (const i of [...links]) {
     // A merging track: it leads into one link only, and is not that link's straightest way in.
     if (i.twin !== null || i.next.length !== 1) continue;
     const o = links[i.next[0]];
-    const from = prevsOf(o.id);
+    const from = into(o.id);
     if (o.twin !== null || from.length < 2 || turn(endDir(i.pts, 3), startDir(o.pts)) <= KNEE) continue;
     const straight = from.map((l) => ({ id: l.id, t: turn(endDir(l.pts), startDir(o.pts)) })).sort((p, q) => p.t - q.t)[0].id;
     if (straight === i.id) continue;
     // The same fit, the tracks taken backwards.
     const f = fit([...o.pts].reverse(), [...i.pts].reverse());
     if (!f) continue;
-    const node = TOE_NODE + moved;
+    const node = toeNode(o.from);
     const [head, tail] = cutAt(o.pts, f.x);
-    const a = fresh({ ways: [o.ways[0]], from: o.from, to: node, twin: null, next: [o.id], pts: head });
+    const a = fresh({ ways: [...o.ways], from: o.from, to: node, twin: null, next: [o.id], pts: head });
     for (const l of from) if (l.id !== i.id) l.next = l.next.map((id) => (id === o.id ? a.id : id));
     o.pts = tail;
     o.length = polylineLength(tail);
@@ -339,22 +366,25 @@ function toes(links: Link[]): number {
     i.pts = resample([...before.slice(0, -1), ...[...f.curve].reverse()], 1);
     i.length = polylineLength(i.pts);
     i.to = node;
+    // It now joins along the through track's first way.
+    if (!i.ways.includes(o.ways[0])) i.ways = [...i.ways, o.ways[0]];
     moved++;
   }
   return moved;
 }
 
 /**
- * The whole network eased as one smoothing spline, until no curve is tighter than `EASE_TO`, measured as the tests and
- * the game measure it: the circle through the points `CHORD` meters either side, across junctions too, where the points
- * beyond a link's end are those of each link a tram may come from or go on to.
+ * The whole network eased until no curve is tighter than `EASE_TO`, and otherwise left as OSM has it.
  *
- * Every point of every track (a junction is one point, shared by all its tracks) is drawn back toward where it lies
- * now with weight 1 (a junction 10, the ends where tracks run out of the area held), and its bend, along its track and
- * through every turn a tram may take at a junction, is weighed by a stiffness that starts at nothing and grows wherever a
- * curve is still too tight. Solved exactly each round (conjugate gradients). So curves wide enough, and straight track,
- * stay as OSM has them; a switch's tracks leave it in one direction because bending through it costs; and a curve too
- * tight is opened out over both sides of any junction on it. Returns the places still too tight.
+ * Every point of every track is a variable (a junction one, shared by its tracks), drawn toward where it lies now:
+ * weight 1, a junction 10, the ends where tracks run out of the area held. Every bend, three points along a track or
+ * through each turn a tram may take at a junction, is drawn with stiffness `BEND` toward its own present bend, held to
+ * the most `EASE_TO` allows (three points a meter apart on a circle of radius R bend by 1/R). A bend within the limit is
+ * its own target and costs nothing, so wide curves and straight track do not move; one beyond it is drawn to the
+ * limit, which spreads a knee into an arc of that radius. Round after round, each solved exactly (conjugate gradients),
+ * until every bend is within the limit. Double track run opposite ways keeps the spacing `separate` gave it, and the
+ * junctions the fixes accept as tighter aim a little over the radius they accept. Returns the places still too tight,
+ * measured as the tests measure them (`curveAt`).
  */
 function easeAll(links: Link[], prevs: number[][], allowed: TrackFixes['tight']): string[] {
   const own = links.filter((l) => l.twin === null || l.twin > l.id);
@@ -382,126 +412,172 @@ function easeAll(links: Link[], prevs: number[][], allowed: TrackFixes['tight'])
     return l.twin !== null && !vars.has(id) ? [...vars.get(l.twin)!].reverse() : vars.get(id)!;
   };
   const target = xs.map((p) => [...p] as Pt);
-  // The bends: [three variables, stiffness]. Along every track, and through every turn at a junction.
-  const bends: Array<{ v: [number, number, number]; k: number }> = [];
-  const bendAt = new Map<string, number>();
-  const addBend = (v: [number, number, number], k: number) => {
-    const key = v.join(',');
-    if (bendAt.has(key) || bendAt.has([...v].reverse().join(','))) return;
-    bendAt.set(key, bends.length);
-    bends.push({ v, k });
+
+  /** The least radius accepted at point `i` of `a`: lower within `CHORD` of a junction the fixes allow to be tight. */
+  const least = (a: Link, i: number) => Math.min(MIN_RADIUS,
+    i <= CHORD && allowed[a.from] ? allowed[a.from].radius : MIN_RADIUS,
+    i >= a.pts.length - 1 - CHORD && allowed[a.to] ? allowed[a.to].radius : MIN_RADIUS);
+  /** The radius a bend aims for: a little over the least accepted, so rounding to centimeters stays over it. */
+  const aimFor = (r: number) => (r < MIN_RADIUS ? r * 1.03 : EASE_TO);
+
+  // The bends: three variables and the radius aimed for. Along every track, and through every turn at a junction.
+  const bends: Array<{ v: [number, number, number]; aim: number; k: number }> = [];
+  const seenBend = new Set<string>();
+  const addBend = (v: [number, number, number], aim: number) => {
+    const key = v[0] < v[2] ? v.join(',') : [...v].reverse().join(',');
+    if (seenBend.has(key)) return;
+    seenBend.add(key);
+    bends.push({ v, aim, k: BEND });
   };
   for (const a of own) {
     const v = vars.get(a.id)!;
-    for (let j = 1; j + 1 < v.length; j++) addBend([v[j - 1], v[j], v[j + 1]], 0);
+    for (let j = 1; j + 1 < v.length; j++) addBend([v[j - 1], v[j], v[j + 1]], aimFor(least(a, j)));
   }
-  // Through a junction, some stiffness from the start: rails have no knee, and a switch's tracks leave it as one.
   for (const a of links) {
     for (const b of a.next) {
       const va = varsOf(a.id), vb = varsOf(b);
-      if (va.length > 1 && vb.length > 1) addBend([va[va.length - 2], va[va.length - 1], vb[1]], JUNCTION_STIFF);
+      if (va.length > 1 && vb.length > 1) addBend([va[va.length - 2], va[va.length - 1], vb[1]], aimFor(allowed[a.to]?.radius ?? MIN_RADIUS));
     }
   }
-  // Which bends each variable is the middle of, for stiffening near a point.
-  const middleOf = new Map<number, number[]>();
-  bends.forEach((b, k) => {
-    if (!middleOf.has(b.v[1])) middleOf.set(b.v[1], []);
-    middleOf.get(b.v[1])!.push(k);
-  });
-  /** A x for one coordinate: the weights, and every bend's stiffness times its second difference spread back. */
+
+  // Track run the other way alongside, on plain double track: each point held as far from its partner as `separate`
+  // left it, so the easing moves double track together instead of drawing it in again.
+  const pairs: Array<{ i: number; j: number; d: Pt }> = [];
+  {
+    const CELL = 4;
+    const grid = new Map<string, Array<{ v: number; link: number; dir: Pt; plain: boolean }>>();
+    /** Whether point `k` of `a` lies on plain double track, away from the junctions at its ends. */
+    const plain = (a: Link, k: number) => !((a.from >= 0 && k < NEAR_JUNCTION) || (a.to >= 0 && k > a.pts.length - 1 - NEAR_JUNCTION));
+    const dirAt = (pts: Pt[], k: number) => unit([pts[Math.min(pts.length - 1, k + 1)][0] - pts[Math.max(0, k - 1)][0], pts[Math.min(pts.length - 1, k + 1)][1] - pts[Math.max(0, k - 1)][1]]);
+    for (const a of own) {
+      const v = vars.get(a.id)!;
+      a.pts.forEach((p, k) => {
+        const key = `${Math.floor(p[0] / CELL)},${Math.floor(p[1] / CELL)}`;
+        if (!grid.has(key)) grid.set(key, []);
+        grid.get(key)!.push({ v: v[k], link: a.id, dir: dirAt(a.pts, k), plain: plain(a, k) });
+      });
+    }
+    const seen = new Set<string>();
+    for (const a of own) {
+      const v = vars.get(a.id)!;
+      a.pts.forEach((p, k) => {
+        if (!plain(a, k)) return;
+        const dir = dirAt(a.pts, k);
+        let best: { v: number; d: number } | null = null;
+        for (let dx = -1; dx <= 1; dx++) {
+          for (let dz = -1; dz <= 1; dz++) {
+            for (const q of grid.get(`${Math.floor(p[0] / CELL) + dx},${Math.floor(p[1] / CELL) + dz}`) ?? []) {
+              if (q.link === a.id || q.link === a.twin || !q.plain || dir[0] * q.dir[0] + dir[1] * q.dir[1] > -0.97) continue;
+              const d = dist(p, xs[q.v]);
+              if (d < SPACING + 0.5 && (!best || d < best.d)) best = { v: q.v, d };
+            }
+          }
+        }
+        if (!best || v[k] === best.v) return;
+        const key = v[k] < best.v ? `${v[k]},${best.v}` : `${best.v},${v[k]}`;
+        if (seen.has(key)) return;
+        seen.add(key);
+        pairs.push({ i: v[k], j: best.v, d: [xs[v[k]][0] - xs[best.v][0], xs[v[k]][1] - xs[best.v][1]] });
+      });
+    }
+  }
+
+  /** A x for one coordinate: the weights, the bends' stiffness times their second difference spread back, and the pairs. */
   const apply = (x: number[]): number[] => {
     const out = x.map((v, i) => weight[i] * v);
-    for (const { v: [i, j, k], k: s } of bends) {
-      if (!s) continue;
-      const r = s * (x[i] - 2 * x[j] + x[k]);
+    for (const { v: [i, j, k], k: stiff } of bends) {
+      const r = stiff * (x[i] - 2 * x[j] + x[k]);
       out[i] += r;
       out[j] -= 2 * r;
       out[k] += r;
     }
+    for (const { i, j } of pairs) {
+      const r = KEEP_APART * (x[i] - x[j]);
+      out[i] += r;
+      out[j] -= r;
+    }
     return out;
   };
-  const diag = () => {
+  const diagonal = () => {
     const d = [...weight];
-    for (const { v: [i, j, k], k: s } of bends) {
-      d[i] += s;
-      d[j] += 4 * s;
-      d[k] += s;
+    for (const { v: [i, j, k], k: stiff } of bends) {
+      d[i] += stiff;
+      d[j] += 4 * stiff;
+      d[k] += stiff;
+    }
+    for (const { i, j } of pairs) {
+      d[i] += KEEP_APART;
+      d[j] += KEEP_APART;
     }
     return d;
   };
-  /** Conjugate gradients, preconditioned by the diagonal, from the current positions. */
-  const solve = (c: 0 | 1) => {
-    const d = diag();
+  /** Conjugate gradients for one coordinate, preconditioned by the diagonal, from the current positions. */
+  const solve = (c: 0 | 1, goals: Pt[]) => {
+    const diag = diagonal();
     const b = target.map((p, i) => weight[i] * p[c]);
+    bends.forEach(({ v: [i, j, k], k: stiff }, n) => {
+      b[i] += stiff * goals[n][c];
+      b[j] -= 2 * stiff * goals[n][c];
+      b[k] += stiff * goals[n][c];
+    });
+    for (const { i, j, d } of pairs) {
+      b[i] += KEEP_APART * d[c];
+      b[j] -= KEEP_APART * d[c];
+    }
     const x = xs.map((p) => p[c]);
     const ax = apply(x);
     const r = b.map((v, i) => v - ax[i]);
-    let z = r.map((v, i) => v / d[i]);
+    let z = r.map((v, i) => v / diag[i]);
     let p = [...z];
     let rz = r.reduce((sum, v, i) => sum + v * z[i], 0);
-    const stop = rz * 1e-12;
-    for (let it = 0; it < 3000 && rz > stop; it++) {
+    const scale = b.reduce((sum, v, i) => sum + (v * v) / diag[i], 0);
+    for (let it = 0; it < 3000 && rz > scale * 1e-20; it++) {
       const ap = apply(p);
       const alpha = rz / p.reduce((sum, v, i) => sum + v * ap[i], 0);
       for (let i = 0; i < x.length; i++) {
         x[i] += alpha * p[i];
         r[i] -= alpha * ap[i];
       }
-      z = r.map((v, i) => v / d[i]);
+      z = r.map((v, i) => v / diag[i]);
       const next = r.reduce((sum, v, i) => sum + v * z[i], 0);
       p = z.map((v, i) => v + (next / rz) * p[i]);
       rz = next;
     }
     x.forEach((v, i) => (xs[i][c] = v));
   };
-  const write = () => {
-    for (const a of own) {
-      a.pts = vars.get(a.id)!.map((i) => [...xs[i]] as Pt);
-      a.length = polylineLength(a.pts);
-      if (a.twin !== null) {
-        links[a.twin].pts = [...a.pts].reverse();
-        links[a.twin].length = a.length;
+  for (let round = 0; round < 300; round++) {
+    // Each bend's goal: its present bend, held to the most its aim allows.
+    // A bend still over after a round is held to it harder: the goal is the limit, not a straight line, so a stiff bend
+    // takes exactly the radius aimed for and nothing more.
+    let over = 0;
+    const goals = bends.map((bend): Pt => {
+      const [i, j, k] = bend.v;
+      const d: Pt = [xs[i][0] - 2 * xs[j][0] + xs[k][0], xs[i][1] - 2 * xs[j][1] + xs[k][1]];
+      const h = (dist(xs[i], xs[j]) + dist(xs[j], xs[k])) / 2;
+      const most = (h * h) / bend.aim, size = Math.hypot(d[0], d[1]);
+      if (size <= most) return d;
+      if (size > most * 1.01) {
+        over++;
+        if (round) bend.k = Math.min(1e6, bend.k * 2);
       }
-    }
-  };
-  /** The tightest curve at point `i` of `a`, through every junction within reach. */
-  const worstAt = (a: Link, i: number) => curveAt(links, prevs, a.id, (i * a.length) / Math.max(1, a.pts.length - 1));
-  /** Stiffer every bend with a variable within `2 * CHORD` points of point `i` of `a` (along it, and on through its junctions). */
-  const stiffen = (a: Link, i: number) => {
-    const near = new Set<number>();
-    const v = varsOf(a.id), n = v.length - 1;
-    for (let k = i - 2 * CHORD; k <= i + 2 * CHORD; k++) {
-      if (k >= 0 && k <= n) near.add(v[k]);
-      if (k < 0) for (const id of prevs[a.id]) { const w = varsOf(id); if (w.length - 1 + k >= 0) near.add(w[w.length - 1 + k]); }
-      if (k > n) for (const id of a.next) { const w = varsOf(id); if (k - n < w.length) near.add(w[k - n]); }
-    }
-    for (const v of near) for (const k of middleOf.get(v) ?? []) bends[k].k = Math.min(1e5, Math.max(bends[k].k * 3, 5));
-  };
-  const out: string[] = [];
-  solve(0);
-  solve(1);
-  write();
-  for (let round = 0; round < 40; round++) {
-    let any = false;
-    for (const a of links) {
-      for (let i = 0; i < a.pts.length; i++) {
-        if (worstAt(a, i) >= EASE_TO) continue;
-        stiffen(a, i);
-        any = true;
-      }
-    }
-    if (!any) break;
-    solve(0);
-    solve(1);
-    write();
+      return [(d[0] * most) / size, (d[1] * most) / size];
+    });
+    if (!over) break;
+    solve(0, goals);
+    solve(1, goals);
   }
-  /** The least radius accepted at point `i` of `a`: lower near a junction the fixes allow to be tight. */
-  const least = (a: Link, i: number) => Math.min(MIN_RADIUS,
-    i <= CHORD && allowed[a.from] ? allowed[a.from].radius : MIN_RADIUS,
-    i >= a.pts.length - 1 - CHORD && allowed[a.to] ? allowed[a.to].radius : MIN_RADIUS);
   for (const a of own) {
+    a.pts = vars.get(a.id)!.map((i) => [...xs[i]] as Pt);
+    a.length = polylineLength(a.pts);
+    if (a.twin !== null) {
+      links[a.twin].pts = [...a.pts].reverse();
+      links[a.twin].length = a.length;
+    }
+  }
+  const out: string[] = [];
+  for (const a of links) {
     for (let i = 0; i < a.pts.length; i++) {
-      const r = worstAt(a, i);
+      const r = curveAt(links, prevs, a.id, (i * a.length) / Math.max(1, a.pts.length - 1));
       if (r < least(a, i)) {
         out.push(`link ${a.id} at ${a.pts[i].map(Math.round).join(', ')}: ${r.toFixed(1)} m`);
         break;
@@ -513,8 +589,8 @@ function easeAll(links: Link[], prevs: number[][], allowed: TrackFixes['tight'])
 
 /**
  * Double track drawn tighter than `SPACING`, moved apart to it: each of two tracks run opposite ways within it is moved
- * half the shortfall away from the other, the move smoothed along the track and faded out over the last 15 m before a
- * junction, so switches and crossings stay where OSM has them. Tracks run the same way are left alone: those are the
+ * half the shortfall away from the other, the move smoothed along the track and faded out over the last
+ * `NEAR_JUNCTION` meters before a junction, so switches and crossings stay where OSM has them. Tracks run the same way are left alone: those are the
  * two sides of a switch, which close in on each other by design. Every move is worked out before any is made.
  */
 function separate(links: Link[]): { meters: number; most: number } {
@@ -569,7 +645,7 @@ function separate(links: Link[]): { meters: number; most: number } {
       });
     }
     m = m.map(([x, z], i) => {
-      const f = Math.min(1, l.from >= 0 ? i / 15 : 1, l.to >= 0 ? (n - i) / 15 : 1);
+      const f = Math.min(1, l.from >= 0 ? i / NEAR_JUNCTION : 1, l.to >= 0 ? (n - i) / NEAR_JUNCTION : 1);
       return [x * f, z * f] as Pt;
     });
     moves.set(l.id, m);
@@ -585,6 +661,53 @@ function separate(links: Link[]): { meters: number; most: number } {
     }
   }
   return { meters, most };
+}
+
+/**
+ * Track run one way that lies closer than `CLEAR` to track run the other way, on plain double track (more than
+ * `NEAR_JUNCTION` from a junction on both): drawn or eased too tight, which the blocks would take for single track.
+ * Meters of it (sampled every meter), the least distance and where.
+ */
+export function closeOpposite(links: Link[]): { meters: number; least: number; at: Pt } {
+  const own = links.filter((l) => l.twin === null || l.twin > l.id);
+  const CELL = 4;
+  const plain = (l: Link, s: number) => !((l.from >= 0 && s < NEAR_JUNCTION) || (l.to >= 0 && s > l.length - NEAR_JUNCTION));
+  const grid = new Map<string, Array<{ link: number; a: Pt; b: Pt }>>();
+  for (const l of own) {
+    let s = 0;
+    for (let i = 0; i + 1 < l.pts.length; i++) {
+      const seg = dist(l.pts[i], l.pts[i + 1]);
+      if (plain(l, s) && plain(l, s + seg)) {
+        const k = `${Math.floor(l.pts[i][0] / CELL)},${Math.floor(l.pts[i][1] / CELL)}`;
+        if (!grid.has(k)) grid.set(k, []);
+        grid.get(k)!.push({ link: l.id, a: l.pts[i], b: l.pts[i + 1] });
+      }
+      s += seg;
+    }
+  }
+  let meters = 0, least = Infinity, at: Pt = [0, 0];
+  for (const l of own) {
+    for (let s = 0; s <= l.length; s += 1) {
+      if (!plain(l, s)) continue;
+      const p = pointAt(l.pts, s), q = pointAt(l.pts, Math.min(l.length, s + 0.5));
+      const dir = unit([q[0] - p[0], q[1] - p[1]]);
+      let d = Infinity;
+      for (let dx = -1; dx <= 1; dx++) {
+        for (let dz = -1; dz <= 1; dz++) {
+          for (const g of grid.get(`${Math.floor(p[0] / CELL) + dx},${Math.floor(p[1] / CELL) + dz}`) ?? []) {
+            if (g.link === l.id || g.link === l.twin) continue;
+            const e = unit([g.b[0] - g.a[0], g.b[1] - g.a[1]]);
+            if (dir[0] * e[0] + dir[1] * e[1] > -0.97) continue;
+            d = Math.min(d, project([g.a, g.b], p).d);
+          }
+        }
+      }
+      if (d >= CLEAR) continue;
+      meters++;
+      if (d < least) [least, at] = [d, p];
+    }
+  }
+  return { meters, least, at };
 }
 
 /** The blocks and which of them conflict, as `buildTracks` describes them. */
@@ -619,14 +742,19 @@ function cutBlocks(links: Link[]): { blocks: Block[]; conflicts: Array<[number, 
     grid.get(k)!.push(i);
   });
   /**
-   * Whether two points are one track running on through a junction (a tram passes both, one after the other), not two
-   * tracks side by side: a turn from one's link (or its twin) to the other's within `2 * CLEAR` of track.
+   * Whether two points are one track running on through junctions (a tram passes both, one after the other), not two
+   * tracks side by side: a tram from one, on its link or the twin, reaches the other within `2 * CLEAR` of track, over
+   * however many short links lie between (a moved toe leaves one of a couple of meters).
    */
   const sides = (link: number) => [links[link], ...(links[link].twin !== null ? [links[links[link].twin!]] : [])];
   const toEnd = (x: Link, link: number, s: number) => (x.id === link ? links[link].length - s : s);
   const toStart = (y: Link, link: number, s: number) => (y.id === link ? s : links[link].length - s);
-  const onto = (a: { link: number; s: number }, b: { link: number; s: number }) =>
-    sides(a.link).some((x) => sides(b.link).some((y) => x.next.includes(y.id) && toEnd(x, a.link, a.s) + toStart(y, b.link, b.s) < 2 * CLEAR));
+  const reaches = (x: Link, d: number, b: { link: number; s: number }): boolean =>
+    d < 2 * CLEAR && x.next.some((id) => {
+      const y = links[id];
+      return y.id === b.link || y.twin === b.link ? d + toStart(y, b.link, b.s) < 2 * CLEAR : reaches(y, d + y.length, b);
+    });
+  const onto = (a: { link: number; s: number }, b: { link: number; s: number }) => sides(a.link).some((x) => reaches(x, toEnd(x, a.link, a.s), b));
   const follows = (a: { link: number; s: number }, b: { link: number; s: number }) => onto(a, b) || onto(b, a);
   const pairs = new Set<string>();
   samples.forEach((x, i) => {

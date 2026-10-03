@@ -12,10 +12,15 @@ export const DAYS = ['weekday', 'saturday', 'sunday'] as const;
 export type Day = (typeof DAYS)[number];
 
 /**
- * The days whose last trams run on past midnight into each kind of day: a weekday's night runs into the next weekday,
- * and Sunday's into Monday; Friday's (a weekday's, here) into Saturday; Saturday's into Sunday.
+ * The days whose last trams may run on past midnight into each kind of day: every one into every one. A weekday's night
+ * runs into the next weekday and Sunday's into Monday as the calendar has it, but a public holiday runs Sunday's
+ * timetable after a weekday's night (`serviceDay.ts`), and its eve Saturday's: the block pass keeps each day's morning
+ * clear of all three nights.
  */
-export const NIGHT_BEFORE: Record<Day, Day[]> = { weekday: ['weekday', 'sunday'], saturday: ['weekday'], sunday: ['saturday'] };
+export const NIGHT_BEFORE: Record<Day, Day[]> = { weekday: [...DAYS], saturday: [...DAYS], sunday: [...DAYS] };
+
+/** What a tram's sign says when it runs to or from the edge of the area out of service, or between two trips. */
+export const OUT_OF_SERVICE = 'Ej i trafik';
 
 export interface RunStop {
   /** Västtrafik's stop point (a platform), its name and platform letter. */
@@ -29,6 +34,15 @@ export interface RunStop {
   s: number;
   /** How far the platform lies from the track, for the stops in the area. */
   off: number;
+  /** Which side of the track the platform lies on, looking the way the run goes: 1 right, -1 left. */
+  side: 1 | -1;
+}
+
+/** What a tram's sign says from `s` meters along its run on: its line (empty out of service) and where it is going. */
+export interface Sign {
+  s: number;
+  line: string;
+  headsign: string;
 }
 
 export interface Run {
@@ -36,6 +50,12 @@ export interface Run {
   line: string;
   /** Where the trips are going, as the signs say it. */
   headsign: string;
+  /**
+   * Where the sign changes, for a run that is one tram's trips joined (`scripts/gbg-gtfs.ts`): at a terminus in the
+   * area, to the next trip's line, or out of service to or from the area's edge. Without it, `line` and `headsign` hold
+   * the whole way (`signAt`).
+   */
+  signs?: Sign[];
   /** The links it runs along, in order, from `from` meters into the first to `to` meters into the last. */
   links: number[];
   from: number;
@@ -101,6 +121,32 @@ export function runPosition(run: Run, times: number[], t: number): number | null
     if (i + 1 < n && t < times[2 * (i + 1)]) return run.stops[i].s + hop(run.stops[i + 1].s - run.stops[i].s, times[2 * (i + 1)] - dep, t - dep);
   }
   return run.stops[n - 1].s;
+}
+
+/** What the sign of a tram on `run` with its front `s` meters along says. */
+export function signAt(run: Run, s: number): { line: string; headsign: string } {
+  let sign: { line: string; headsign: string } = run;
+  for (const x of run.signs ?? []) {
+    if (x.s > s) break;
+    sign = x;
+  }
+  return sign;
+}
+
+/**
+ * A day's trips as the game fetches them (`osm/trams/<day>.json`): each as its run, then its times as whole seconds,
+ * each from the one before (the first from the service day's start). Two thirds the size of the plain lists.
+ */
+export function packTrips(trips: Trip[]): number[][] {
+  return trips.map((t) => [t.run, ...t.times.map((v, i) => Math.round(v - (i ? t.times[i - 1] : 0)))]);
+}
+
+/** `packTrips` undone. */
+export function unpackTrips(packed: number[][]): Trip[] {
+  return packed.map(([run, ...deltas]) => {
+    let at = 0;
+    return { run, times: deltas.map((d) => (at += d)) };
+  });
 }
 
 /** The stretch of the run a tram whose front is at `s` covers, or null when none of it is in the area. */

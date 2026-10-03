@@ -4,11 +4,13 @@
 // binary), compiling the physics, and building the world behind the loading screen. `?debug` leaves out the loading
 // screen's minimum time (`LOADING_MIN` in boot.ts), which is shown beside the result: whatever finishes before it
 // costs the player nothing.
-// It runs on a desktop connection and as a phone on Lighthouse's slow 4G with a CPU four times slower.
+// It runs on a desktop connection and as a phone on Lighthouse's slow 4G, with the CPU slowed to the same phone as
+// `fps.ts` (`phoneCpu.ts`).
 // Options: --url http://localhost:4173/ (default), --only desktop|phone, --runs 2 (the median is shown),
 // --json <file> (the medians, for `scripts/check.ts`).
 
 import puppeteer from 'puppeteer-core';
+import { throttleToPhone } from './phoneCpu';
 
 const arg = (name: string, fallback: string) => {
   const i = process.argv.indexOf(`--${name}`);
@@ -22,9 +24,9 @@ const CHROME = process.env.CHROME ?? '/Applications/Google Chrome.app/Contents/M
 const LOADING_MIN = 4.5;
 
 const PROFILES = {
-  desktop: { viewport: { width: 1512, height: 900, deviceScaleFactor: 2, isMobile: false, hasTouch: false }, cpu: 1, network: null },
+  desktop: { viewport: { width: 1512, height: 900, deviceScaleFactor: 2, isMobile: false, hasTouch: false }, phone: false, network: null },
   // Lighthouse's mobile throttling: 1.6 Mbit/s down, 750 kbit/s up, 150 ms round trips.
-  phone: { viewport: { width: 390, height: 844, deviceScaleFactor: 3, isMobile: true, hasTouch: true }, cpu: 4, network: { offline: false, latency: 150, downloadThroughput: (1.6 * 1024 * 1024) / 8, uploadThroughput: (750 * 1024) / 8 } },
+  phone: { viewport: { width: 390, height: 844, deviceScaleFactor: 3, isMobile: true, hasTouch: true }, phone: true, network: { offline: false, latency: 150, downloadThroughput: (1.6 * 1024 * 1024) / 8, uploadThroughput: (750 * 1024) / 8 } },
 } as const;
 
 export interface Run { downloadS: number; bytes: number; wasmBytes: number; wasmDoneS: number; compileS: number; readyS: number }
@@ -60,7 +62,7 @@ async function once(profile: keyof typeof PROFILES): Promise<Run> {
     await page.goto(url.toString(), { waitUntil: 'networkidle0' });
     // Throttle only from the click on: the landing page is not what is measured.
     if (p.network) await cdp.send('Network.emulateNetworkConditions', p.network);
-    if (p.cpu > 1) await cdp.send('Emulation.setCPUThrottlingRate', { rate: p.cpu });
+    if (p.phone) await throttleToPhone(page, cdp);
     const t0 = (await page.evaluate(() => { const t = performance.now(); document.querySelector<HTMLButtonElement>('#start')!.click(); return t; })) as number;
     await page.waitForFunction(() => (window as unknown as { __ready?: number }).__ready, { timeout: 300_000, polling: 200 });
     return (await page.evaluate((t0: number) => {

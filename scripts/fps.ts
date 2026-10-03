@@ -2,7 +2,8 @@
 // Chrome runs headless on this computer's own GPU, with the page visible and requestAnimationFrame at the screen's
 // rate, so the game plays as it does for a player. Each scene is set up through `__us` (`?debug`), given a few
 // seconds to build what lies near, and then timed. The same scenes run again as a phone: a phone's screen and
-// touch, and a CPU six times slower (the GPU cannot be slowed, so a real phone draws slower still).
+// touch, and a CPU slowed to a fixed phone's speed whatever the computer (`phoneCpu.ts`; the GPU cannot be slowed, so
+// a real phone draws slower still).
 // With `--device`, the scenes also run on an Android phone over USB: Chrome on the phone, driven through adb, with
 // the dev server reached through `adb reverse`. That is the only measurement with a phone's real GPU.
 // Options: --url http://localhost:5180/ (default), --seconds 6, --only desktop|phone|device, --scene <parts of names, comma separated>,
@@ -11,6 +12,7 @@
 // --device (the phone too).
 
 import puppeteer, { type Browser, type Page } from 'puppeteer-core';
+import { describeThrottle, throttleToPhone } from './phoneCpu';
 
 const arg = (name: string, fallback: string) => {
   const i = process.argv.indexOf(`--${name}`);
@@ -52,15 +54,16 @@ export const SCENES: Scene[] = [
 
 interface Profile {
   viewport: { width: number; height: number; deviceScaleFactor: number; isMobile: boolean; hasTouch: boolean } | null;
-  cpu: number;
+  /** The CPU slowed to the emulated phone's (`phoneCpu.ts`). */
+  phone?: boolean;
   /** A real phone over USB instead of headless Chrome. */
   device?: boolean;
 }
 
 export const PROFILES: Record<string, Profile> = {
-  desktop: { viewport: { width: 1512, height: 900, deviceScaleFactor: 2, isMobile: false, hasTouch: false }, cpu: 1 },
-  phone: { viewport: { width: 390, height: 844, deviceScaleFactor: 3, isMobile: true, hasTouch: true }, cpu: 6 },
-  device: { viewport: null, cpu: 1, device: true },
+  desktop: { viewport: { width: 1512, height: 900, deviceScaleFactor: 2, isMobile: false, hasTouch: false } },
+  phone: { viewport: { width: 390, height: 844, deviceScaleFactor: 3, isMobile: true, hasTouch: true }, phone: true },
+  device: { viewport: null, device: true },
 };
 
 export interface Result { fps: number; p95: number; slow: number; worst: number; hitches: number; pixelRatio: number; calls: number; triangles: number }
@@ -161,7 +164,7 @@ async function run(name: string, p: Profile, report: FpsReport): Promise<void> {
   try {
     const page = await browser.newPage();
     if (p.viewport) await page.setViewport(p.viewport);
-    if (p.cpu > 1) await (await page.createCDPSession()).send('Emulation.setCPUThrottlingRate', { rate: p.cpu });
+    const throttle = p.phone ? await throttleToPhone(page, await page.createCDPSession()) : null;
     // Passengers on, as the busiest case.
     await page.evaluateOnNewDocument(() => { try { localStorage.setItem('under-stockholm:passengers', 'on'); } catch { /* No storage. */ } });
     const url = new URL(BASE);
@@ -188,7 +191,7 @@ async function run(name: string, p: Profile, report: FpsReport): Promise<void> {
     // Every scene is timed at the same moment of the timetable, whatever the loading and the warm-up took: which trains
     // are in sight changes from one second to the next, and would otherwise count as a regression or hide one.
     await page.evaluate('window.__fpsBase = Math.floor(__us.time / 60) * 60');
-    const size = p.viewport ? `${p.viewport.width}x${p.viewport.height} @${p.viewport.deviceScaleFactor}x, CPU ${p.cpu}x slower` : (await page.evaluate('`${innerWidth}x${innerHeight} @${devicePixelRatio}x, ` + navigator.userAgent.match(/Android[^;)]*/)?.[0]')) as string;
+    const size = p.viewport ? `${p.viewport.width}x${p.viewport.height} @${p.viewport.deviceScaleFactor}x${throttle ? `, ${describeThrottle(throttle)}` : ''}` : (await page.evaluate('`${innerWidth}x${innerHeight} @${devicePixelRatio}x, ` + navigator.userAgent.match(/Android[^;)]*/)?.[0]')) as string;
     console.log(`\n${name} (${size})`);
     console.log('scene'.padEnd(30), 'fps', '  p95 ms', ' >20ms', ' worst', ' >50ms', ' pixels', ' calls', ' triangles');
     const results: Record<string, Result> = {};

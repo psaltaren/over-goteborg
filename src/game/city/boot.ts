@@ -35,6 +35,8 @@ import { TRAM_FLOOR, TRAM_WIDTH } from '../layout';
 import { stepAside } from './aside';
 import { grow, PLACES, placeNear, PLAY, STREET_Y, yawToward, type Pt } from './geo';
 import { loadTramData } from './tramData';
+import { CitySounds } from './citySounds';
+import { Landmarks } from './landmarks';
 import { Stops } from './stops';
 import { Trams, type Aboard } from './trams';
 import { BUILD_REACH, CityWorld } from './world';
@@ -210,6 +212,9 @@ export async function startGame(root: HTMLElement, options: GameOptions = {}): P
   // The stops: platforms, shelters, names, and the next trams on their displays.
   const stops = tramData ? new Stops(physics, tramData.table, tramData.runs, tramData.links) : null;
   if (stops) scene.add(stops.group);
+  // Kopparmärra, and the city's sounds: rain, gulls, Domkyrkan's bell.
+  scene.add(new Landmarks(physics).group);
+  const sounds = new CitySounds();
   let listening = debug;
 
   // Where the player starts: where they last stood, if that was in the city, else on Drottningtorget.
@@ -466,6 +471,29 @@ export async function startGame(root: HTMLElement, options: GameOptions = {}): P
   const playable = grow(PLAY, 10);
   const inside = (x: number, z: number) => x > playable.x0 && x < playable.x1 && z > playable.z0 && z < playable.z1;
 
+  /** When each tram last rang at the player, so a tram rings once as it comes, not every frame. */
+  const warned = new Map<number, number>();
+  /**
+   * A tram coming at someone standing near its track ahead (not yet in its way): it rings its bell, once, as a driver
+   * would.
+   */
+  function warn(): void {
+    const now = performance.now();
+    for (const tram of trams!.drawn) {
+      if (tram.distance > 45) break;
+      const speed = Math.abs(tram.state.speed);
+      if (speed < 2 || (warned.get(tram.state.id) ?? -Infinity) > now - 8000) continue;
+      const f = tram.sections[0];
+      const ux = player.feet.x - f.x, uz = player.feet.z - f.z;
+      const along = ux * f.dx + uz * f.dz, across = -ux * f.dz + uz * f.dx;
+      if (along > f.hl && along < f.hl + 10 + speed * 1.5 && Math.abs(across) < TRAM_WIDTH / 2 + 1.8) {
+        warned.set(tram.state.id, now);
+        audio.bell(0.8);
+      }
+    }
+    if (warned.size > 64) warned.clear();
+  }
+
   /** The nearest tram, heard: its rumble and whine by how near and fast it is, and its brakes squealing as it slows. */
   let heard: { id: number; speed: number } | null = null;
   function tramSound(dt: number): void {
@@ -547,6 +575,7 @@ export async function startGame(root: HTMLElement, options: GameOptions = {}): P
       trams.update(time, player.feet.x, player.feet.z, sky.daylight);
       if (!aboard) {
         outOfTheWay();
+        warn();
         player.setRide(0, 0, 0, false);
         trams.showDisplay(null, '', '', '');
       }
@@ -585,6 +614,7 @@ export async function startGame(root: HTMLElement, options: GameOptions = {}): P
     openWeather.update(dt, time, weather.state, player.camera.position, 1, STREET_Y);
     lap('sky');
     if (trams) tramSound(dt);
+    sounds.update(time, out, weather.state, sky.daylight, player.feet.x, player.feet.z);
     if (player.stepped > 0) footsteps.update(player.stepped, player.running, 'stone', out);
     else footsteps.rest();
     secondTimer -= dt;
@@ -629,6 +659,9 @@ export async function startGame(root: HTMLElement, options: GameOptions = {}): P
       tramStates: () => trams?.states ?? [],
       /** The stops' platforms, shelters and displays. */
       stops,
+      /** The sound, and the city's own (rain, gulls, the bell). */
+      audio,
+      sounds,
       /** Aboard the nearest tram standing at a stop with its doors open (else the nearest), in its second section's aisle, facing ahead. */
       ride() {
         const tram = trams?.drawn.find((t) => t.state.doors > 0.5 && t.state.line) ?? trams?.drawn[0];

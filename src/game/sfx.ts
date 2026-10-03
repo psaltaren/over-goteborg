@@ -75,6 +75,12 @@ export class Spatial {
   setLevel(level: number, smoothing = 0.2): void {
     this.input.gain.setTargetAtTime(level, this.out.ctx.currentTime, smoothing);
   }
+
+  /** Takes it out of the graph, for a sound made once (a gull's cry). */
+  dispose(): void {
+    this.input.disconnect();
+    this.panner.disconnect();
+  }
 }
 
 /** Places the Web Audio listener at the camera. */

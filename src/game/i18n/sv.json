@@ -812,7 +812,12 @@
     "done": "Tillbaka på gatan."
   },
   "tram": {
-    "aside": "Spårvagnen plingar. Du kliver åt sidan."
+    "aside": "Spårvagnen plingar. Du kliver åt sidan.",
+    "next": "Nästa hållplats: {stop}.",
+    "last": "Spårvagnen lämnar innerstaden.",
+    "display": "Nästa: {stop}",
+    "alight": "Spårvagnen lämnar innerstaden. Du stiger av.",
+    "line": "Linje {line} mot {headsign}"
   },
   "battery": {
     "toggle": "Batteriläge",

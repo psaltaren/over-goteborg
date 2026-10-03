@@ -9,6 +9,7 @@
 
 import type RAPIER from '@dimforge/rapier3d';
 import {
+  CanvasTexture,
   Color,
   DataTexture,
   DynamicDrawUsage,
@@ -16,6 +17,7 @@ import {
   InstancedBufferAttribute,
   InstancedMesh,
   LinearFilter,
+  Mesh,
   LinearMipmapLinearFilter,
   Matrix4,
   MeshBasicMaterial,
@@ -28,7 +30,7 @@ import {
   type WebGLProgramParametersWithUniforms,
 } from 'three';
 import { FONT, fitText, MONO } from '../gfx/signs';
-import { TRAM_BODY, TRAM_DOORS, TRAM_FLOOR, TRAM_LENGTH, TRAM_SECTION_ENDS, TRAM_WIDTH } from '../layout';
+import { TRAM_BODY, TRAM_DOORS, TRAM_FLOOR, TRAM_JOINT, TRAM_LENGTH, TRAM_SECTION_ENDS, TRAM_WIDTH } from '../layout';
 import type { Physics } from '../physics';
 import { inFootprint, type Footprint } from './aside';
 import { STREET_Y, type Pt } from './geo';
@@ -37,13 +39,21 @@ import type { Run } from './schedule';
 import type { Link } from './trackData';
 import { TrackIndex } from './trackIndex';
 import type { TramState, TripTable } from './tripTable';
-import { doorsOf, sectionHalf, tramModel } from './tramModel';
+import { doorsOf, sectionBoxes, sectionHalf, tramModel, type SectionBox } from './tramModel';
 
 /** The most trams drawn at once (the area holds 30 at the weekday rush). */
 const CAPACITY = 48;
 /** Trams this far from the player are drawn (the fog's far edge, and some); this close they are solid. */
 const SHOW_REACH = 460;
 const SOLID_REACH = 70;
+/** Trams this near have their inside drawn, and this near can be boarded: doorways, a floor, walls. */
+const INSIDE_REACH = 40;
+const BOARD_REACH = 25;
+/** How many trams at once may be near enough to board (the rest nearby are solid boxes), and have their inside drawn. */
+const BOARDABLE = 3;
+const INSIDES = 4;
+/** The sections' boxes, front to rear: the end sections' and the middle ones'. */
+const BOXES: SectionBox[][] = [sectionBoxes('end'), sectionBoxes('middle'), sectionBoxes('middle'), sectionBoxes('end')];
 /** How far a tram runs on its track while it fades in, or out, where its run begins or ends. */
 const FADE = 60;
 /** The signs' atlas: rows of this many pixels, as many as this; row 0 stays black, for a sign that finds no room. */
@@ -53,6 +63,8 @@ const LINE_COLOURS: Record<string, string> = {
   '1': '#ffffff', '2': '#fddd04', '3': '#1f4fd6', '4': '#00a33a', '5': '#e2001a', '6': '#ff8800', '7': '#a86a1e',
   '8': '#bbbb00', '9': '#8888ff', '10': '#88ff88', '11': '#000000', '12': '#55c2b5', '13': '#ffbb88',
 };
+/** Half an articulation's gap: a section's floor reaches this far past its end, to meet the next's. */
+const TRAM_JOINT_HALF = TRAM_JOINT / 2;
 /** A door leaf's travel: how far it slides aside once it has swung out. */
 const SLIDE = TRAM_DOORS.width / 2 - 0.04;
 /** The doors of an end and a middle section, in its own frame. */
@@ -223,6 +235,24 @@ export interface DrawnTram {
   distance: number;
 }
 
+/**
+ * Where someone stands in a tram: which tram and section, and where in the section's own frame (`x` along it toward
+ * its cab, `z` across), and the way that frame faced. `trams.carry` moves them with it.
+ */
+export interface Aboard {
+  id: number;
+  k: number;
+  x: number;
+  z: number;
+  yaw: number;
+}
+
+/** A section's own frame: its middle, and the way its cab faces (the rear section's turned round). */
+function frameOf(f: Footprint, k: number, last: number): { x: number; z: number; dx: number; dz: number } {
+  const turn = k === last ? -1 : 1;
+  return { x: f.x, z: f.z, dx: f.dx * turn, dz: f.dz * turn };
+}
+
 export class Trams {
   readonly group = new Group();
   /** The trams in the area this frame, and those drawn, nearest the player first. */
@@ -248,6 +278,16 @@ export class Trams {
   private readonly signRows: InstancedBufferAttribute;
   private readonly signLocal: Matrix4[];
   private readonly colliders: RAPIER.Collider[] = [];
+  private readonly endInside: InstancedMesh;
+  private readonly middleInside: InstancedMesh;
+  private readonly inside = fading(new MeshBasicMaterial({ vertexColors: true }), 'inside');
+  /** The boxes of the trams near enough to board, a set per tram, each box made once its size. */
+  private readonly boardSlots: RAPIER.Collider[][] = [];
+  /** The display over the aisle of the tram ridden, and what it says. */
+  readonly display: Mesh;
+  private readonly displayCanvas: HTMLCanvasElement;
+  private displayText = '';
+  private readonly displayLocal: Matrix4;
   private readonly poses: SectionPose[] = [];
   private readonly joint: Pt = [0, 0];
   private readonly m = new Matrix4();
@@ -277,7 +317,17 @@ export class Trams {
     quad.setAttribute('signRow', this.signRows);
     this.signs = part(quad, signMaterial(this.atlas), CAPACITY * 6);
     this.signLocal = model.signs;
-    this.group.add(this.ends, this.endGlass, this.middles, this.middleGlass, this.bellows, this.pantographs, this.lamps, this.leaves, this.signs);
+    this.endInside = part(model.endInside, this.inside, INSIDES * 2);
+    this.middleInside = part(model.middleInside, this.inside, INSIDES * 2);
+    this.displayCanvas = document.createElement('canvas');
+    this.displayCanvas.width = 512;
+    this.displayCanvas.height = 96;
+    const tex = new CanvasTexture(this.displayCanvas);
+    tex.colorSpace = SRGBColorSpace;
+    this.display = new Mesh(new PlaneGeometry(1, 1), new MeshBasicMaterial({ map: tex }));
+    this.display.visible = false;
+    this.displayLocal = model.display;
+    this.group.add(this.ends, this.endGlass, this.middles, this.middleGlass, this.bellows, this.pantographs, this.lamps, this.leaves, this.signs, this.endInside, this.middleInside, this.display);
   }
 
   /** The tracks' segments within about `reach` of (`x`, `z`). */
@@ -328,8 +378,9 @@ export class Trams {
       this.drawn.push(tram);
     }
     this.drawn.sort((a, b) => a.distance - b.distance);
-    let ends = 0, middles = 0, joints = 0, pantographs = 0, leaves = 0, signs = 0, solid = 0;
+    let ends = 0, middles = 0, joints = 0, pantographs = 0, leaves = 0, signs = 0, solid = 0, endsIn = 0, middlesIn = 0, boarding = 0, insides = 0;
     for (const tram of this.drawn) {
+      const showInside = tram.distance < INSIDE_REACH && insides++ < INSIDES;
       const st = tram.state;
       const fade = this.fadeOf(st);
       const row = this.atlas.row(st.line, st.headsign);
@@ -341,6 +392,10 @@ export class Trams {
         // The section's frame: at its middle on the street, turned the way it faces; the rear cab turned round.
         this.q.setFromAxisAngle(this.up, Math.atan2(-p.dz, p.dx) + (rear ? Math.PI : 0));
         this.m.compose(this.at.set(p.x, STREET_Y, p.z), this.q, this.one);
+        if (showInside) {
+          if (end) this.put(this.endInside, endsIn++, this.m, fade);
+          else this.put(this.middleInside, middlesIn++, this.m, fade);
+        }
         if (end) {
           this.put(this.ends, ends, this.m, fade);
           this.put(this.endGlass, ends, this.m, fade);
@@ -377,8 +432,10 @@ export class Trams {
           this.put(this.bellows, joints++, this.m.compose(this.at.set(this.joint[0], STREET_Y, this.joint[1]), this.q, this.one), fade);
         }
       }
-      if (tram.distance < SOLID_REACH) solid = this.solid(tram.sections, solid);
+      if (tram.distance < BOARD_REACH && boarding < BOARDABLE) this.boardable(tram, boarding++);
+      else if (tram.distance < SOLID_REACH) solid = this.solid(tram.sections, solid);
     }
+    for (let k = boarding; k < this.boardSlots.length; k++) for (const c of this.boardSlots[k]) c.setEnabled(false);
     for (let k = solid; k < this.colliders.length; k++) this.colliders[k].setEnabled(false);
     this.upload(this.ends, ends);
     this.upload(this.endGlass, ends);
@@ -389,6 +446,8 @@ export class Trams {
     this.upload(this.pantographs, pantographs);
     this.upload(this.leaves, leaves);
     this.upload(this.signs, signs);
+    this.upload(this.endInside, endsIn);
+    this.upload(this.middleInside, middlesIn);
     this.range(this.lamps.instanceColor!, ends, 3);
     this.range(this.signRows, signs, 1);
     this.light(daylight);
@@ -428,6 +487,126 @@ export class Trams {
     return used;
   }
 
+  /**
+   * A tram near enough to board: its sections' floors, ceilings, walls and doorways (`sectionBoxes`), a doorway's panel
+   * taken away while that side's doors are open. From the slot's set of boxes, made the first time.
+   */
+  private boardable(tram: DrawnTram, slot: number): void {
+    const R = this.physics.R;
+    if (!this.boardSlots[slot]) {
+      this.boardSlots[slot] = BOXES.flatMap((boxes) => boxes.map((b) => this.physics.world.createCollider(R.ColliderDesc.cuboid((b.x1 - b.x0) / 2, (b.y1 - b.y0) / 2, (b.z1 - b.z0) / 2))));
+    }
+    const colliders = this.boardSlots[slot];
+    const last = tram.sections.length - 1;
+    let i = 0;
+    for (let k = 0; k <= last; k++) {
+      const f = frameOf(tram.sections[k], k, last);
+      const yaw = Math.atan2(-f.dz, f.dx);
+      const rotation = { x: 0, y: Math.sin(yaw / 2), z: 0, w: Math.cos(yaw / 2) };
+      // The doors open on the platform's side, as the tram sees it; the rear section is turned round.
+      const open = tram.state.doors > 0.6 ? (k === last ? -tram.state.side : tram.state.side) : 0;
+      for (const b of BOXES[k]) {
+        const c = colliders[i++];
+        const lx = (b.x0 + b.x1) / 2, lz = (b.z0 + b.z1) / 2;
+        c.setTranslation({ x: f.x + lx * f.dx - lz * f.dz, y: STREET_Y + (b.y0 + b.y1) / 2, z: f.z + lx * f.dz + lz * f.dx });
+        c.setRotation(rotation);
+        c.setEnabled(b.step ? b.step.side === open : !(b.door && b.door.side === open));
+      }
+    }
+  }
+
+  /** Where someone with their feet at `feet` stands in a tram near enough to board, or null when in none. */
+  aboard(feet: Vector3): Aboard | null {
+    const floor = STREET_Y + TRAM_FLOOR;
+    if (Math.abs(feet.y - floor) > 0.35) return null;
+    // Every tram drawn, not only those that were near: the player may have been put in one (a teleport, a respawn).
+    for (const tram of this.drawn) {
+      const last = tram.sections.length - 1;
+      for (let k = 0; k <= last; k++) {
+        const f = frameOf(tram.sections[k], k, last);
+        const ux = feet.x - f.x, uz = feet.z - f.z;
+        if (ux * ux + uz * uz > 64) continue;
+        const x = ux * f.dx + uz * f.dz, z = -ux * f.dz + uz * f.dx;
+        // Within the section and half each articulation, inside its walls.
+        if (Math.abs(x) <= tram.sections[k].hl + TRAM_JOINT_HALF && Math.abs(z) < TRAM_WIDTH / 2 - 0.05) return { id: tram.state.id, k, x, z, yaw: Math.atan2(-f.dz, f.dx) };
+      }
+    }
+    return null;
+  }
+
+  /**
+   * Where someone who stood at `on` before this frame's move stands now, the tram having moved on: how far they are
+   * carried, and how far turned. Null when that tram is no longer drawn (it has left the area).
+   */
+  carry(on: Aboard): { dx: number; dz: number; turn: number } | null {
+    const tram = this.drawn.find((t) => t.state.id === on.id);
+    if (!tram || !tram.sections[on.k]) return null;
+    const f = frameOf(tram.sections[on.k], on.k, tram.sections.length - 1);
+    const yaw = Math.atan2(-f.dz, f.dx);
+    let turn = yaw - on.yaw;
+    turn -= Math.round(turn / (2 * Math.PI)) * 2 * Math.PI;
+    return { dx: f.x + on.x * f.dx - on.z * f.dz, dz: f.z + on.x * f.dz + on.z * f.dx, turn };
+  }
+
+  /** The tram drawn with this id, or undefined. */
+  tram(id: number): DrawnTram | undefined {
+    return this.drawn.find((t) => t.state.id === id);
+  }
+
+  /**
+   * Someone in a doorway as its doors close: where to move them so the doors shut clear of them, inside if they stood
+   * more in than out. Null when no door is closing on them.
+   */
+  doorway(feet: Vector3): Pt | null {
+    for (const tram of this.drawn) {
+      if (tram.distance > BOARD_REACH) break;
+      const st = tram.state;
+      if (st.doors <= 0 || st.doors > 0.7) continue;
+      const last = tram.sections.length - 1;
+      for (let k = 0; k <= last; k++) {
+        const f = frameOf(tram.sections[k], k, last);
+        const side = k === last ? -st.side : st.side;
+        const ux = feet.x - f.x, uz = feet.z - f.z;
+        const x = ux * f.dx + uz * f.dz, z = -ux * f.dz + uz * f.dx;
+        if (Math.sign(z) !== side || Math.abs(z) < TRAM_WIDTH / 2 - 0.45 || Math.abs(z) > TRAM_WIDTH / 2 + 0.45) continue;
+        if (!doorsOf(k === 0 || k === last ? 'end' : 'middle').some((d) => Math.abs(x - d) < TRAM_DOORS.width / 2 + 0.2)) continue;
+        const toZ = side * (Math.abs(z) < TRAM_WIDTH / 2 ? TRAM_WIDTH / 2 - 0.5 : TRAM_WIDTH / 2 + 0.5);
+        return [f.x + x * f.dx - toZ * f.dz, f.z + x * f.dz + toZ * f.dx];
+      }
+    }
+    return null;
+  }
+
+  /**
+   * The display over the aisle of the tram ridden (id), saying `text` (its line and destination over, the next stop
+   * under); hidden with no tram.
+   */
+  showDisplay(id: number | null, line: string, headsign: string, text: string): void {
+    const tram = id === null ? undefined : this.tram(id);
+    this.display.visible = !!tram;
+    if (!tram) return;
+    const f = frameOf(tram.sections[0], 0, tram.sections.length - 1);
+    this.q.setFromAxisAngle(this.up, Math.atan2(-f.dz, f.dx));
+    this.m.compose(this.at.set(f.x, STREET_Y, f.z), this.q, this.one).multiply(this.displayLocal);
+    this.display.matrixAutoUpdate = false;
+    this.display.matrix.copy(this.m);
+    this.display.matrixWorldNeedsUpdate = true;
+    const key = `${line}|${headsign}|${text}`;
+    if (key === this.displayText) return;
+    this.displayText = key;
+    const ctx = this.displayCanvas.getContext('2d')!;
+    ctx.fillStyle = '#060708';
+    ctx.fillRect(0, 0, 512, 96);
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = '#ffb02e';
+    fitText(ctx, line ? `${line} ${headsign}` : headsign, 480, 600, 30, MONO);
+    ctx.fillText(line ? `${line} ${headsign}` : headsign, 256, 26);
+    fitText(ctx, text, 480, 700, 40, MONO);
+    ctx.fillText(text, 256, 66);
+    ((this.display.material as MeshBasicMaterial).map as CanvasTexture).needsUpdate = true;
+  }
+
   /** Bodies as bright as the daylight (and a little at night, the street lamps on them); windows lit from inside after dusk. */
   private light(daylight: number): void {
     this.body.color.setScalar(Math.max(0.2, daylight));
@@ -437,15 +616,15 @@ export class Trams {
   }
 
   /**
-   * The section of a tram about to run into someone at (`x`, `z`): in its way, its front a second's travel and a meter
-   * ahead of it while it moves. Null when no tram is.
+   * The section of a moving tram about to run into someone at (`x`, `z`): in its way, its front a second's travel and a
+   * meter ahead of it. Null when no tram is. A tram standing still runs into no one: people walk up to it and in.
    */
   inTheWay(x: number, z: number): { tram: DrawnTram; section: Footprint } | null {
     for (const tram of this.drawn) {
       if (tram.distance > 60) break;
-      const moving = Math.abs(tram.state.speed) > 0.05;
+      if (Math.abs(tram.state.speed) <= 0.05) continue;
       for (let k = 0; k < tram.sections.length; k++) {
-        const ahead = moving && k === 0 ? 1 + Math.abs(tram.state.speed) : 0;
+        const ahead = k === 0 ? 1 + Math.abs(tram.state.speed) : 0;
         if (inFootprint(tram.sections[k], x, z, 0.25, ahead)) return { tram, section: tram.sections[k] };
       }
     }

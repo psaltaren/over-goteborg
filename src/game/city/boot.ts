@@ -16,6 +16,7 @@ import { Footsteps } from '../footsteps';
 import { nextFrame } from '../frames';
 import { Gamepads } from '../gamepad';
 import { Hud } from '../hud';
+import sv from '../i18n/sv.json';
 import { lang, setLang, text } from '../i18n/text';
 import { loadRapier, Physics, type Rapier } from '../physics';
 import { Player } from '../player';
@@ -30,11 +31,11 @@ import { Warnings } from '../warnings';
 import { daylight, OpenAirWeather, Weather } from '../weather';
 import { setDaylight } from '../world/section';
 import { Sky } from '../world/sky';
-import { TRAM_WIDTH } from '../layout';
+import { TRAM_FLOOR, TRAM_WIDTH } from '../layout';
 import { stepAside } from './aside';
-import { PLACES, placeNear, PLAY, STREET_Y, yawToward, type Pt } from './geo';
+import { grow, PLACES, placeNear, PLAY, STREET_Y, yawToward, type Pt } from './geo';
 import { loadTramData } from './tramData';
-import { Trams } from './trams';
+import { Trams, type Aboard } from './trams';
 import { BUILD_REACH, CityWorld } from './world';
 
 /** Seconds the build screen stays up at least, so its text can be read. */
@@ -185,12 +186,23 @@ export async function startGame(root: HTMLElement, options: GameOptions = {}): P
   const hud = new Hud(root, null, touchMode);
   // What the pause menu and the HUD have for the metro has no use in the city yet: its modes (driving, the tour, a
   // life, the network, the screensaver), its discovery book, other players and people's voices.
-  for (const b of [hud.realButton, hud.bookButton, hud.ghostButton, hud.voiceButton, ...hud.crowdButtons, ...hud.motionButtons]) b.hidden = true;
+  for (const b of [hud.realButton, hud.bookButton, hud.ghostButton, hud.voiceButton, ...hud.crowdButtons]) b.hidden = true;
   for (const el of root.querySelectorAll<HTMLElement>('.hud-map, .pause-modes')) el.hidden = true;
   hud.setLine('Göteborg');
   root.querySelector('.hud')?.classList.add('is-city');
   const audio = new Audio();
   const footsteps = new Footsteps();
+  // The sway of a tram ridden, unless the system or the player asks for less motion (as on the metro).
+  let motion = !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  try { const saved = localStorage.getItem('under-stockholm:motion'); if (saved !== null) motion = saved === 'on'; } catch { /* Keep system preference. */ }
+  hud.setMotion(motion);
+  const toggleMotion = () => {
+    motion = !motion;
+    hud.setMotion(motion);
+    hud.say(motion ? text.motionOn : text.motionOff, 2);
+    try { localStorage.setItem('under-stockholm:motion', motion ? 'on' : 'off'); } catch { /* Session preference still works. */ }
+  };
+  hud.motionButtons.forEach((button) => button.addEventListener('click', (event) => { event.stopPropagation(); toggleMotion(); }));
   const tramData = await tramsUp;
   const trams = tramData ? new Trams(physics, tramData.table, tramData.runs, tramData.links) : null;
   if (trams) scene.add(trams.group);
@@ -356,6 +368,7 @@ export async function startGame(root: HTMLElement, options: GameOptions = {}): P
     if (action === 'mute') toggleSound();
     if (action === 'pixels') togglePixels();
     if (action === 'help') hud.toggleHelp();
+    if (action === 'motion') toggleMotion();
   });
   // A gamepad, polled every frame: it can also resume from the menu without the mouse.
   const pads = new Gamepads({
@@ -412,6 +425,42 @@ export async function startGame(root: HTMLElement, options: GameOptions = {}): P
     if (to) player.teleport(new Vector3(to[0], STREET_Y + 0.05, to[1]));
     else respawn(text.tram.aside);
   }
+
+  /** Where the player stands in a tram, judged before the trams move each frame; null on foot. */
+  let aboard: Aboard | null = null;
+  /** The tram ridden and the stop last announced on it, so each is called once. */
+  let called = { id: -1, next: -2 };
+  let lastSpeed = 0;
+  const carried = new Vector3();
+
+  /** Moves the player with the tram they stand in, round its curves (turning the view as the tram turns). */
+  function ride(dt: number): void {
+    if (!aboard || !trams) return;
+    const moved = trams.carry(aboard);
+    // Off the edge of the inner city with it, or the tram gone (it has left): off at the nearest place.
+    if (!moved || !inside(player.feet.x, player.feet.z)) {
+      aboard = null;
+      respawn(text.tram.alight);
+      return;
+    }
+    player.carry(carried.set(moved.dx - player.feet.x, 0, moved.dz - player.feet.z));
+    player.yaw += moved.turn;
+    const tram = trams.tram(aboard.id)!;
+    const st = tram.state;
+    player.setRide(st.s, st.speed, dt > 0 ? (st.speed - lastSpeed) / dt : 0, motion);
+    lastSpeed = st.speed;
+    const run = tramData!.runs[st.run];
+    const nextName = st.next >= 0 ? run.stops[st.next].name : '';
+    // On the way from a stop: the next one called, with the chime, in the browser's Swedish voice.
+    if (st.line && st.speed > 0.5 && (called.id !== st.id || called.next !== st.next)) {
+      called = { id: st.id, next: st.next };
+      const message = nextName ? sv.tram.next.replace('{stop}', nextName) : sv.tram.last;
+      audio.announce(message, () => hud.say(message, 6), () => {}, true);
+    }
+    trams.showDisplay(st.id, st.line, st.headsign, nextName ? sv.tram.display.replace('{stop}', nextName) : sv.tram.last);
+  }
+  const playable = grow(PLAY, 10);
+  const inside = (x: number, z: number) => x > playable.x0 && x < playable.x1 && z > playable.z0 && z < playable.z1;
 
   /** The nearest tram, heard: its rumble and whine by how near and fast it is, and its brakes squealing as it slows. */
   let heard: { id: number; speed: number } | null = null;
@@ -489,12 +538,22 @@ export async function startGame(root: HTMLElement, options: GameOptions = {}): P
     }
 
     if (trams) {
+      // Who stands in which tram is judged before they move; then they move, and the rider with them.
+      aboard = respawning ? null : trams.aboard(player.feet);
       trams.update(time, player.feet.x, player.feet.z, sky.daylight);
-      outOfTheWay();
+      if (!aboard) {
+        outOfTheWay();
+        player.setRide(0, 0, 0, false);
+        trams.showDisplay(null, '', '', '');
+      }
       lap('trams');
     }
     physics.step(dt);
     lap('physics');
+    ride(dt);
+    // A doorway whose doors close on the player: in or out, whichever is nearer.
+    const doorway = trams?.doorway(player.feet);
+    if (doorway) player.teleport(new Vector3(doorway[0], player.feet.y + 0.02, doorway[1]));
     player.update(dt);
     world.keepUp(player.feet.x, player.feet.z, 6);
     lap('build');
@@ -502,7 +561,8 @@ export async function startGame(root: HTMLElement, options: GameOptions = {}): P
 
     // The place the player is nearest, in the status bar.
     const near = placeNear(player.feet.x, player.feet.z);
-    hud.setStatus(near.name, '');
+    const riding = aboard && trams?.tram(aboard.id)?.state;
+    hud.setStatus(near.name, riding && riding.line ? text.tram.line.replace('{line}', riding.line).replace('{headsign}', riding.headsign) : '');
     const out = listening ? audio.output : null;
     if (out) placeListener(out, player.camera.position, player.yaw);
     weather.update(dt, time, null, out);
@@ -562,6 +622,16 @@ export async function startGame(root: HTMLElement, options: GameOptions = {}): P
       /** The trams drawn this frame, nearest first, and every tram in the area. */
       trams,
       tramStates: () => trams?.states ?? [],
+      /** Aboard the nearest tram standing at a stop with its doors open (else the nearest), in its second section's aisle, facing ahead. */
+      ride() {
+        const tram = trams?.drawn.find((t) => t.state.doors > 0.5 && t.state.line) ?? trams?.drawn[0];
+        if (!tram) return null;
+        const f = tram.sections[1];
+        player.teleport(new Vector3(f.x, STREET_Y + TRAM_FLOOR + 0.02, f.z), Math.atan2(-f.dx, -f.dz));
+        return { line: tram.state.line, headsign: tram.state.headsign, id: tram.state.id };
+      },
+      /** Where the player stands in a tram, if they do. */
+      aboard: () => aboard,
       get time() {
         return time;
       },

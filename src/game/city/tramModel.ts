@@ -25,7 +25,6 @@ const shaded = (hex: number): Paint => {
 const BLUE = shaded(0x3ba8e0);
 const CREAM = shaded(0xf2ecdb);
 const BLACK = shaded(0x16191c);
-const RECESS = shaded(0x0e1012);
 const UNDER = shaded(0x24282c);
 const GREY = shaded(0x7a8187);
 const BELLOWS = shaded(0x2d3135);
@@ -66,6 +65,144 @@ export interface TramModel {
   lamps: BufferGeometry;
   /** Where an end section's signs sit: the front display and one on each side, as matrices on a unit quad facing +z. */
   signs: Matrix4[];
+  /** The inside of an end section and of a middle one: floor, lining, ceiling, seats, poles, the wall to the cab. */
+  endInside: BufferGeometry;
+  middleInside: BufferGeometry;
+  /** Where the display inside an end section shows the next stop: a matrix on a unit quad facing +z. */
+  display: Matrix4;
+}
+
+/** The inside's height: the ceiling, under the roof's equipment. */
+export const CEILING = 2.45;
+/** The walls' thickness inside, as the colliders have them. */
+const WALL = 0.08;
+
+/** A box a section's colliders are made of, in its own frame; a door's panel says which door and side it closes. */
+export interface SectionBox {
+  x0: number;
+  x1: number;
+  y0: number;
+  y1: number;
+  z0: number;
+  z1: number;
+  /** A doorway's panel (there while that side's doors are shut), or the step out of it (there while they are open). */
+  door?: { side: 1 | -1 };
+  step?: { side: 1 | -1 };
+}
+
+/**
+ * The boxes that make a section solid and let people in through its doors: the floor and the ceiling, reaching half
+ * across each articulation so one section's meet the next's, the walls between the doors, a panel in each doorway
+ * (taken away while that side's doors are open) and a step out of it (there only while they are open: half the floor's
+ * height, so the street is two easy steps down), and in an end section the wall to the cab.
+ */
+export function sectionBoxes(kind: 'end' | 'middle'): SectionBox[] {
+  const hl = kind === 'end' ? END_HALF : MID_HALF;
+  const x0 = -hl - TRAM_JOINT / 2;
+  const x1 = kind === 'end' ? hl - NOSE : hl + TRAM_JOINT / 2;
+  const out: SectionBox[] = [
+    { x0, x1, y0: TRAM_FLOOR - 0.15, y1: TRAM_FLOOR, z0: -HW, z1: HW },
+    { x0, x1, y0: CEILING, y1: CEILING + 0.2, z0: -HW, z1: HW },
+  ];
+  if (kind === 'end') out.push({ x0: x1 - 0.12, x1, y0: TRAM_FLOOR, y1: CEILING, z0: -HW, z1: HW });
+  const half = TRAM_DOORS.width / 2;
+  const doors = doorsOf(kind);
+  for (const s of [1, -1] as const) {
+    const [z0, z1] = s > 0 ? [HW - WALL, HW] : [-HW, -HW + WALL];
+    const cuts = [x0, ...doors.flatMap((d) => [d - half, d + half]), x1].sort((p, q) => p - q);
+    for (let i = 0; i + 1 < cuts.length; i++) {
+      const door = doors.some((d) => Math.abs((cuts[i] + cuts[i + 1]) / 2 - d) < half);
+      out.push({ x0: cuts[i], x1: cuts[i + 1], y0: TRAM_FLOOR, y1: CEILING, z0, z1, ...(door ? { door: { side: s } } : {}) });
+    }
+    for (const d of doors) {
+      const [sz0, sz1] = s > 0 ? [HW, HW + 0.35] : [-HW - 0.35, -HW];
+      out.push({ x0: d - half, x1: d + half, y0: 0, y1: TRAM_FLOOR / 2, z0: sz0, z1: sz1, step: { side: s } });
+    }
+  }
+  return out;
+}
+
+const FLOOR_PAINT = shaded(0x3a3f45);
+const EDGE = shaded(0xe2b500);
+const LINING = shaded(0xcfd2d4);
+const CEILING_PAINT = shaded(0xe4e6e7);
+const LIGHT = rgb(0xf4f1e6);
+const POSTS = shaded(0x5c6166);
+const SEAT = shaded(0x2b4170);
+const SEAT_FRAME = shaded(0x8c9399);
+const POLE = shaded(0xe2b500);
+const BULKHEAD = shaded(0xb3b8bc);
+const CAB_GLASS = rgb(0x1a1f23);
+
+/**
+ * A section's inside, from `x0` to `x1` (the cab's wall, in an end section): a dark floor with yellow edges at the
+ * doors, the lining under the windows and over them, the ceiling with a strip of light down the middle, pairs of seats
+ * facing each other between the doors, yellow poles by each door, and in an end section the wall to the cab.
+ */
+function inside(b: MeshBuilder, kind: 'end' | 'middle'): void {
+  const hl = kind === 'end' ? END_HALF : MID_HALF;
+  const x0 = -hl - TRAM_JOINT / 2;
+  const x1 = kind === 'end' ? hl - NOSE : hl + TRAM_JOINT / 2;
+  const w = HW - WALL;
+  const doors = doorsOf(kind);
+  const half = TRAM_DOORS.width / 2;
+  const f = TRAM_FLOOR + 0.002;
+  face(b, v(x0, f, -w), v(x1, f, -w), v(x1, f, w), v(x0, f, w), FLOOR_PAINT, v(0, 1, 0));
+  // Yellow edges at the doorways, where the floor meets the step.
+  for (const d of doors) for (const s of [1, -1]) face(b, v(d - half, f + 0.001, s * (w - 0.12)), v(d + half, f + 0.001, s * (w - 0.12)), v(d + half, f + 0.001, s * w), v(d - half, f + 0.001, s * w), EDGE, v(0, 1, 0));
+  // The lining, facing in: under the sills and over the heads, none where the doors are.
+  const cuts = [x0, ...doors.flatMap((d) => [d - half, d + half]), x1].sort((p, q) => p - q);
+  for (const s of [1, -1]) {
+    for (let i = 0; i + 1 < cuts.length; i++) {
+      const [xa, xb] = [cuts[i], cuts[i + 1]];
+      const door = doors.some((d) => Math.abs((xa + xb) / 2 - d) < half);
+      if (!door) {
+        face(b, v(xa, TRAM_FLOOR, s * w), v(xb, TRAM_FLOOR, s * w), v(xb, SILL, s * w), v(xa, SILL, s * w), LINING, v(0, 0, -s));
+        // The posts between the panes, as the outside has them (`side`).
+        const n = Math.max(1, Math.round((xb - xa) / PANE));
+        for (let k = 0; k <= n; k++) {
+          const px = xa + ((xb - xa) * k) / n;
+          face(b, v(px - POST / 2, SILL, s * (w - 0.01)), v(px + POST / 2, SILL, s * (w - 0.01)), v(px + POST / 2, HEAD, s * (w - 0.01)), v(px - POST / 2, HEAD, s * (w - 0.01)), POSTS, v(0, 0, -s));
+        }
+      }
+      face(b, v(xa, door ? Math.min(HEAD, TRAM_FLOOR + TRAM_DOORS.height) : HEAD, s * w), v(xb, door ? Math.min(HEAD, TRAM_FLOOR + TRAM_DOORS.height) : HEAD, s * w), v(xb, CEILING, s * w), v(xa, CEILING, s * w), LINING, v(0, 0, -s));
+    }
+  }
+  // The ceiling, and its light.
+  face(b, v(x0, CEILING, -w), v(x1, CEILING, -w), v(x1, CEILING, w), v(x0, CEILING, w), CEILING_PAINT, v(0, -1, 0));
+  for (const z of [-0.55, 0.55]) face(b, v(x0 + 0.3, CEILING - 0.01, z - 0.05), v(x1 - 0.3, CEILING - 0.01, z - 0.05), v(x1 - 0.3, CEILING - 0.01, z + 0.05), v(x0 + 0.3, CEILING - 0.01, z + 0.05), LIGHT, v(0, -1, 0));
+  // Seats in the bays between the doors: two by two either side of the aisle, the rows facing each other.
+  const bays = cuts.slice(0, -1).map((c, i) => [c, cuts[i + 1]] as const).filter(([a, z]) => !doors.some((d) => Math.abs((a + z) / 2 - d) < half));
+  for (const [a, z] of bays) {
+    const room = z - a - 0.6;
+    const rows = Math.max(0, Math.floor(room / 0.75));
+    for (let r = 0; r < rows; r++) {
+      const x = a + 0.3 + 0.375 + r * 0.75;
+      const facing = r < rows / 2 ? 1 : -1;
+      for (const s of [1, -1]) {
+        const zi = s * 0.45, zo = s * (w - 0.04);
+        const [za, zb] = s > 0 ? [zi, zo] : [zo, zi];
+        box(b, v(x - 0.22, TRAM_FLOOR + 0.05, za), v(x + 0.22, TRAM_FLOOR + 0.42, zb), SEAT_FRAME);
+        box(b, v(x - 0.23, TRAM_FLOOR + 0.42, za), v(x + 0.23, TRAM_FLOOR + 0.5, zb), SEAT);
+        const back = x - facing * 0.24;
+        box(b, v(back - 0.05, TRAM_FLOOR + 0.5, za), v(back + 0.05, TRAM_FLOOR + 1.12, zb), SEAT);
+      }
+    }
+  }
+  // Poles by each door, from floor to ceiling.
+  for (const d of doors) for (const s of [1, -1]) for (const e of [-1, 1]) {
+    const px = d + e * (half + 0.12), pz = s * (w - 0.35);
+    box(b, v(px - 0.02, TRAM_FLOOR, pz - 0.02), v(px + 0.02, CEILING, pz + 0.02), POLE);
+  }
+  if (kind === 'end') {
+    // The wall to the cab, a dark window in it.
+    const x = x1 - 0.12;
+    face(b, v(x, TRAM_FLOOR, -w), v(x, TRAM_FLOOR, w), v(x, 1.25, w), v(x, 1.25, -w), BULKHEAD, v(-1, 0, 0));
+    face(b, v(x, 1.25, -w), v(x, 1.25, -0.5), v(x, CEILING, -0.5), v(x, CEILING, -w), BULKHEAD, v(-1, 0, 0));
+    face(b, v(x, 1.25, 0.5), v(x, 1.25, w), v(x, CEILING, w), v(x, CEILING, 0.5), BULKHEAD, v(-1, 0, 0));
+    face(b, v(x, 2.05, -0.5), v(x, 2.05, 0.5), v(x, CEILING, 0.5), v(x, CEILING, -0.5), BULKHEAD, v(-1, 0, 0));
+    face(b, v(x - 0.005, 1.25, -0.5), v(x - 0.005, 1.25, 0.5), v(x - 0.005, 2.05, 0.5), v(x - 0.005, 2.05, -0.5), CAB_GLASS, v(-1, 0, 0));
+  }
 }
 
 /** A quad, turned so it faces `out`. */
@@ -100,8 +237,8 @@ function side(b: MeshBuilder, glass: MeshBuilder, x0: number, x1: number, s: 1 |
     const door = doors.some((d) => Math.abs((xa + xb) / 2 - d) < half);
     wall(xa, xb, HEAD, EAVE, CREAM);
     if (door) {
+      // The doorway itself is left open: the leaves close it, and an open door shows the inside.
       wall(xa, xb, FOOT, TRAM_FLOOR, BLUE);
-      wall(xa, xb, TRAM_FLOOR, top, RECESS);
       if (top < HEAD) wall(xa, xb, top, HEAD, BLACK);
       continue;
     }
@@ -223,6 +360,11 @@ export function tramModel(): TramModel {
   // The bellows: dark, a little narrower and lower than the car, long enough to close the gap.
   const bellows = new MeshBuilder();
   box(bellows, v(-TRAM_JOINT / 2 - 0.05, FOOT + 0.05, -(HW - 0.1)), v(TRAM_JOINT / 2 + 0.05, ROOF - 0.08, HW - 0.1), BELLOWS);
+  // And from inside, walking through: its walls and ceiling facing in, the turntable's plate on the floor.
+  const j = TRAM_JOINT / 2 + 0.05, jw = HW - WALL - 0.02;
+  for (const s of [1, -1]) face(bellows, v(-j, TRAM_FLOOR, s * jw), v(j, TRAM_FLOOR, s * jw), v(j, CEILING, s * jw), v(-j, CEILING, s * jw), BELLOWS, v(0, 0, -s));
+  face(bellows, v(-j, CEILING - 0.01, -jw), v(j, CEILING - 0.01, -jw), v(j, CEILING - 0.01, jw), v(-j, CEILING - 0.01, jw), BELLOWS, v(0, -1, 0));
+  face(bellows, v(-j, TRAM_FLOOR + 0.004, -jw), v(j, TRAM_FLOOR + 0.004, -jw), v(j, TRAM_FLOOR + 0.004, jw), v(-j, TRAM_FLOOR + 0.004, jw), SEAT_FRAME, v(0, 1, 0));
   // The pantograph, one arm with a knee, its bow at the wire.
   const panto = new MeshBuilder();
   const base = ROOF + 0.3;
@@ -248,9 +390,17 @@ export function tramModel(): TramModel {
       .multiply(new Matrix4().makeRotationY(s > 0 ? 0 : Math.PI))
       .multiply(new Matrix4().makeScale(1.3, 0.24, 1)));
   }
+  const endInside = new MeshBuilder(), middleInside = new MeshBuilder();
+  inside(endInside, 'end');
+  inside(middleInside, 'middle');
+  // The display over the aisle in front of the cab's wall, facing back down the car.
+  const display = new Matrix4().makeTranslation(END_HALF - NOSE - 0.14, CEILING - 0.2, 0)
+    .multiply(new Matrix4().makeRotationY(-Math.PI / 2))
+    .multiply(new Matrix4().makeScale(1.2, 0.22, 1));
   model = {
     end: end.build(), endGlass: endGlass.build(), middle: middle.build(), middleGlass: middleGlass.build(),
     leaf: leaf.build(), bellows: bellows.build(), pantograph: panto.build(), lamps: lamps.build(), signs,
+    endInside: endInside.build(), middleInside: middleInside.build(), display,
   };
   return model;
 }

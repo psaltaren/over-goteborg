@@ -1,0 +1,43 @@
+{
+  "license": "Map data © OpenStreetMap contributors, available under the Open Database License (ODbL): https://www.openstreetmap.org/copyright",
+  "format": "bun scripts/gbg-osm.ts. One square of the city, in decimeters from its middle (middle, in meters in the city frame), x and z as in src/game/city/geo.ts; the lists as scripts/osm-streets.ts writes them for Stockholm. buildings: whole where their middle lies in the square. roads and areas: cut to it.",
+  "middle": [-375,125],
+  "urban": false,
+  "names": ["Stora Nygatan","Östra Larmgatan","Östra Hamngatan","Lilla Nygatan","Slussgatan","Nya Allén","Norra Allégatan","Parkgatan","Trädgårdsgatan","Bastionsplatsen","Lilla Kungsgatan","Grönsakstorget","Södra Larmgatan","Kungstorget","Lilla Kyrkogatan","Korsgatan","Drottninggatan","Vallgatan","Kaserntorget","Rosenlundsplatsen","Rosenlundsgatan","Sahlgrensgatan","Ekelundsgatan","Magasinsgatan","Västra Hamngatan","Packhusplatsen","Smedjegatan","Kronhusgatan","Postgatan","Sten Sturegatan","Engelbrektsgatan","Skånegatan","Kungshöjdsgatan","Arsenalsgatan","Hvitfeldtsgatan","Luntantugatan","Läroverksgatan","Arkitektgatan","Lilla Korsgatan","Otterhällegatan","Skräddaregatan","Norra Liden","Teatergatan","Chalmersgatan","Viktor Rydbergsgatan","Geijersgatan","Arkivgatan","Kristinelundsgatan","Vasagatan","Regnbågsgatan","Lindholmspiren","Lindholmsallén","Götaverksgatan","Anders Carlssons Gata","Theres Svenssons Gata","Berzeliigatan","Lilla Drottninggatan","Repslagaregatan","Eldaregatan","Kjellmansgatan","Jungmansgatan","Vattugatan","Övre Matrosgatan","Klamparegatan","Bäckegatan","Kompassgatan","Paradisgatan","Storebackegatan","Sjömansgatan","Sofiebergsgatan","Jägaregatan","Pallasgatan","Neptunusgatan","Herkulesgatan","Tegnérsgatan","Första Långgatan","Stigbergsliden","Johannes Kyrkogång","Masthuggstorget","Haga Östergata","Tredje Långgatan","Pilgatan","Östra Skansgatan","Skolgatan","Husargatan","Kaponjärgatan","Renströmsgatan","Johannebergsgatan","Olof Wijksgatan","Gösta Rahmns Gata","Molinsgatan","Vasa Kyrkogata","Oscar Fredriks Kyrkogata","Andra Långgatan","Fjärde Långgatan","Plantagegatan","Universitetsplatsen","Karl Gustavsgatan","Vasaplatsen","Thorildsgatan","Föreningsgatan","Erik Dahlbergsgatan","Storgatan","Viktoriagatan","Södra Viktoriagatan","Viktoriabron","Bellmansgatan","Haga Kyrkogata","Övre Fogelbergsgatan","Västergatan","Myntgatan","Kungsgatan","Kyrkogatan","Övre Djupedalsgatan","Prinsgatan","Värmlandsgatan","Vegagatan","Djupedalsgatan","Nedre Matrosgatan","Landsvägsgatan","Leijonsparres Väg","Järntorget","Kämpegatan","Smålandsgatan","Västgötagatan","Hallandsgatan","Wadmansgatan","Hedåsgatan","Stampgatan","Flaggatan","Burgårdsplatsen","Örgrytevägen","Eklandagatan","Odinsplatsen","Polhemsplatsen","Åkareplatsen","Eva Rodhes Gata","Adler Salvius Gata","Barnhusgatan","Burggreveplatsen","Färgaregatan","Folkungagatan","Baldersgatan","Burggrevegatan","Alströmergatan","Ullevigatan","Lilla Stampgatan","Burgårdsgatan","Bohusgatan","Västra Skansgatan","Mellangatan","Frigångsgatan","Lilla Bergsgatan","Linnégatan","Lilla Risåsgatan","Lennart Torstenssonsgatan","Högåsplatsen","Ekmansgatan","Cassiopejagatan","Lilla Pusterviksgatan","Pusterviksgatan","Brogatan","Kapellgatan","Karin Boyes Gata","Kungsportsavenyen","Södra Hamngatan","Södra Vägen","Levgrensvägen","Skeppsbron","Valdemar Noréns Gata","Fredsbron","Röhssgatan","Tyggårdsgatan","Gustaf Adolfs Torg","Nedre Kvarnbergsgatan","Övre Spannmålsgatan","Mjölnaregatan","Mätaregatan","Spannmålsgatan","Södra Allégatan","Järnvågsgatan","Andréegatan","Emigrantvägen","Torsgatan","Trollhättegatan","Christina Nilssons Gata","Vikingsgatan","Norra Sjöfarten","Lilla Badhusgatan","Drottningtorget","Pumpgatan","Södra Sjöfarten","Vasa Kyrkoplan","Lundby Hamngata","Lilla Bommen","Lundgrensgatan","Teknologgatan","Erik Dahlbergstrappan","Bengt Lidnersgatan","Dicksonsgatan","Skyttegatan","Lyckans Väg","Stenhammarsgatan","Karin Kavlis Plats","Mässans Gata","Nedre Fogelbergsgatan","Torggatan","Köpmansgatan","Skanstorget","Bryggaregatan","Klädpressaregatan","Norra Hamngatan","Nybyggesgatan","Besvärsgatan","Lundbyleden","Carl Grimbergsgatan","Kungsportsplatsen","Raoul Wallenbergs Gata","Vasabron","Nils Ericsonsgatan","Oskarsgatan","Östra Sänkverksgatan","Sänkverksgatan","Kungsportsbron","Basargatan","Götabergsgatan","Järntorgsgatan","Aschebergsgatan","Kilsgatan","Kvarnbergsgatan","Sprängkullsgatan","Heurlins Plats","Pusterviksplatsen","Valhallagatan","Fjällgatan","Risåsgatan","Kastellgatan","Friggaplatsen","Åkerigatan","Bangårdsgatan","Residensbron","Läraregatan","Ernst Fontells Plats","Terrassgatan","Kvillepiren","Hotellplatsen","Bror Nilssons Gata","Nils Ericsonsplatsen","Nordhemsgatan","Slussplatsen","Operagatan","Kämpebron","Masthamnsgatan","Masthuggsliden","Elfrida Andrées Gata","Kruthusgatan","Barlastgatan","Johannesplatsen","Kronhusgården","Masthuggsterrassen","Knut Ströms Plats","Packhusgatan","Kaserngränden","Ingenjörsgatan","Lasarettsgatan","Västra Liden","Lilla Torget","Odinsgatan","Västra Stampbron","Östra Stampbron","Lilla Bommens Torg","Lilla Karlavagnsgatan","Diagonalen","Lorensbergsgatan","Fredsgatan","Frihamnen","Lilla Klädpressaregatan","Genomgången","Haga Nygata","Övre Husargatan","Hvitfeldtsplatsen","Götaplatsen","Surbrunnsgatan","Blixtbrickegatan","Stureplatsen","Oscar Fredriks Kyrkoplan","Bulteklubbsgatan","Nilssonsberg","Bergsgatan","Stora Badhusgatan","Järnbäraregatan","Friggagatan","Uppfinnaregatan","Verkstadsgatan","Teknikgatan","Lindholmsplatsen","Gullbergsvassgatan","Lundbystrandskajen","Bergslagsgatan","Hisingsbron","Stadstjänaregatan","Lindholmshamnen","Hamntorgsgatan","Ingemar Johanssons Plats","Mårten Krakowgatan","Gullbergs Strandgata","Andromedagatan","Folke Bernadottes Gata","Falutorgslänken","Centralslingan","Sankt Eriksgatan","Västra Sjöfarten","Sven Rydells Plats","Kruthuslänken","Korsvägen","Fisktorget","Lilians Väg","Karlavagnsgatan","Sveagatan","Kanaltorgsgatan","Polstjärnegatan","Planetgatan","Nordstans lastgata","Elin Svenssons Gata","Ceresgatan"],
+  "trees": [468,1207,-74,23],
+  "buildings": [
+    [120,null,0,-647,-491,-32,-108,-242,72,33,108]
+  ],
+  "roads": [
+    [0,45,296,907,-713,-207,61,-452,136,-219,66,-47,-157,674,-205,44,160],
+    [0,70,296,-273,-959,-18,11,-16,13,-14,16,-11,17,-8,19,-4,21,-2,20,2,21,6,19,8,19,11,17,13,15,16,12,18,10,18,8,20,4,20,1,21,-3,15,-4,14,-5,14,-8,13,-9,11,-11,10,-12,9,-13,7,-14,5,-15,3,-15,1,-15,0,-16,-4,-20,-7,-19,-9,-18,-13,-16,-14,-14,-17,-11,-19,-9,-19,-5,-20,-3,-20,1,-21,4,-19,7],
+    [0,70,296,-482,-800,-159,23,-383,73,-226,32],
+    [0,45,296,-1250,-378,105,-17,75,-53,44,-92,30,-111],
+    [2,25,-1,-208,1250,375,-102,344,-106,354,-104,77,-33,308,-88],
+    [0,45,-1,1250,722,-87,12,-107,24,-180,56,-401,121,36,107],
+    [0,70,296,-996,-651,-28,-53],
+    [0,45,296,-192,-523,-61,68,-63,123,5,31],
+    [0,45,296,-192,-523,-100,41,-78,13,-52,-15,-52,-24,-57,-21,-42,-10,-83,18],
+    [0,45,296,-311,-301,35,-23,69,-112,15,-87],
+    [0,45,296,-193,-719,9,34,10,32,14,45,-3,51,-29,34],
+    [0,70,313,-250,-1071,-6,-50,-5,-129],
+    [0,45,-1,-810,1250,1044,-312,805,-287],
+    [0,45,-1,511,1042,67,208],
+    [0,45,-1,294,-352,-46,-164],
+    [0,45,296,-311,-301,58,65,99,12,448,-128,637,-187],
+    [0,70,296,-116,-768,99,-47,110,-53],
+    [0,70,296,93,-868,-124,-27,-80,-18],
+    [0,70,313,-250,-1071,-22,63,-19,60],
+    [0,70,313,-174,-963,-76,-108],
+    [0,70,296,-482,-800,103,27,73,22],
+    [0,70,296,-344,-862,-138,62],
+    [2,25,-1,1237,148,13,-4],
+    [0,90,122,972,-1250,68,196,44,151,53,101,71,88,42,54],
+    [2,25,-1,1250,195,-13,-47,-63,-143,-139,-464,-27,-122,4,-146,4,-131,-13,-145,-45,-152,-34,-95],
+    [0,70,296,93,-868,241,-40]
+  ],
+  "areas": [
+    [4,4,-453,-90,-51,13,-116,-386,46,-13],
+    [4,17,-65,-172,-11,-35,79,-23,-116,-384,85,-26,-16,-50,462,-138,35,114,162,-49,74,-22,-8,-26,57,-17,22,73,160,-45,59,210,-46,121,-554,165]
+  ]
+}

@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { CITY, cityTiles, PLAY, TILE, toGame, toLatLon } from '../src/game/city/geo';
+import { CITY, cityTiles, PLACES, placeNear, PLAY, TILE, toGame, toLatLon, yawToward } from '../src/game/city/geo';
 
 describe('the city frame', () => {
   test('goes there and back', () => {
@@ -52,5 +52,21 @@ describe('the city frame', () => {
     expect(CITY.x0).toBeLessThanOrEqual(PLAY.x0 - TILE);
     expect(CITY.z1).toBeGreaterThanOrEqual(PLAY.z1 + TILE);
     expect(new Set(tiles.map((t) => t.key)).size).toBe(tiles.length);
+  });
+
+  test('names the inner city\'s places, all where the player may walk', () => {
+    for (const [name, [x, z]] of Object.entries(PLACES)) {
+      expect(x > PLAY.x0 && x < PLAY.x1 && z > PLAY.z0 && z < PLAY.z1).toBe(true);
+      expect(placeNear(x, z).name).toBe(name);
+    }
+    // Drottningtorget lies east of Brunnsparken, Järntorget furthest west, all along +x as the frame promises.
+    expect(PLACES.Drottningtorget[0]).toBeLessThan(PLACES.Brunnsparken[0]);
+    expect(PLACES.Järntorget[0]).toBeGreaterThan(PLACES.Grönsakstorget[0]);
+  });
+
+  test('turns the player toward a place', () => {
+    // Player looks along (-sin yaw, -cos yaw): toward +x is a yaw of -90 degrees.
+    expect(yawToward([0, 0], [10, 0])).toBeCloseTo(-Math.PI / 2, 6);
+    expect(yawToward([0, 0], [0, -10])).toBeCloseTo(0, 6);
   });
 });

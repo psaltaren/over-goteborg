@@ -1,6 +1,7 @@
 import { expect, test } from 'bun:test';
 import { announcementAt, AnnouncementTracker, ARRIVAL_LEAD, NEXT_STOP_PLATFORM_LEAD, T_CENTRALEN_PLATFORM_LEAD } from '../src/game/announcements';
-import { ARRIVAL_PAUSE, RECORDED_ANNOUNCEMENTS, WARNING_PAUSE } from '../src/game/announcementSignal';
+import { ARRIVAL_PAUSE, WARNING_PAUSE } from '../src/game/announcementSignal';
+import { RECORDED_ANNOUNCEMENTS } from '../src/game/stationRecordings';
 import { BLUE_LINE, NETWORK, serviceDestination, isLineTerminal, routeTimetables } from '../src/game/line';
 import { PLATFORM_HALF_L, TRAIN_HALF_L } from '../src/game/layout';
 import { DEPARTURE_HOLD, DOOR_SLIDE, DOOR_WARNING } from '../src/game/timetable';

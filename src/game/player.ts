@@ -1,7 +1,7 @@
 import type RAPIER from '@dimforge/rapier3d';
 import { PerspectiveCamera, Vector3 } from 'three';
 import { RIDE_LAYOUT } from './layout';
-import { rideMotion } from './journey';
+import { rideMotion } from './rideMotion';
 import type { Seat } from './journey';
 import type { Physics } from './physics';
 import { settings } from './settings';

@@ -5,7 +5,7 @@ import { TouchControls } from './touchControls';
 import { AdditiveBlending, Color, Fog, HemisphereLight, MeshBasicMaterial, PerspectiveCamera, Scene, Vector3, WebGLRenderer, WebGLRenderTarget, type Object3D } from 'three';
 import { Audio } from './audio';
 import { announcementAt, AnnouncementTracker } from './announcements';
-import { RECORDED_ANNOUNCEMENTS, STATION_RECORDINGS } from './announcementSignal';
+import { RECORDED_ANNOUNCEMENTS, STATION_RECORDINGS } from './stationRecordings';
 import { Ambience, type AmbientTrain } from './ambience';
 import { Busker } from './busker';
 import { Saxophonist } from './saxophone';
@@ -397,7 +397,7 @@ export async function startGame(root: HTMLElement, options: GameOptions = {}): P
   const silverSeen = new Set<string>();
 
   const hud = new Hud(root, net, touchMode);
-  const audio = new Audio();
+  const audio = new Audio(RECORDED_ANNOUNCEMENTS);
   const announcements = new AnnouncementTracker();
   let listening = debug;
 

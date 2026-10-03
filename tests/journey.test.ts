@@ -1,5 +1,6 @@
 import { expect, test } from 'bun:test';
-import { cabinSeats, nearestSeat, rideMotion } from '../src/game/journey';
+import { cabinSeats, nearestSeat } from '../src/game/journey';
+import { rideMotion } from '../src/game/rideMotion';
 import { trainPassengerPoses } from '../src/game/crowd';
 import { commuterPoses } from '../src/game/commuters';
 import { COMMUTER_LAYOUT as C, DOOR_XS, PLATFORM_HALF_W, TRACK_Z, TRAIN_HALF_W } from '../src/game/layout';

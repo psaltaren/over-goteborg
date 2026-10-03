@@ -1,5 +1,6 @@
 import text from './i18n/sv.json';
-import { ARRIVAL_PAUSE, RECORDED_ANNOUNCEMENTS, STATION_RECORDINGS, WARNING_PAUSE, type RecordedAnnouncement } from './announcementSignal';
+import { ARRIVAL_PAUSE, WARNING_PAUSE, type RecordedAnnouncement } from './announcementSignal';
+import { RECORDED_ANNOUNCEMENTS, STATION_RECORDINGS } from './stationRecordings';
 import type { Network } from './line';
 import { PLATFORM_HALF_L, TRAIN_HALF_L } from './layout';
 import type { Timetable, TrainState } from './timetable';

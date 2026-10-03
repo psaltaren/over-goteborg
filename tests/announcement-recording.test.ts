@@ -2,7 +2,8 @@ import { expect, test } from 'bun:test';
 import { existsSync } from 'node:fs';
 import { readdir } from 'node:fs/promises';
 import catalog from '../public/audio/catalog.json';
-import { ALIGHTING_WARNING_PATH, ANNOUNCEMENT_SIGNAL_PATH, DOOR_WARNING_PATH, RECORDED_ANNOUNCEMENTS } from '../src/game/announcementSignal';
+import { ALIGHTING_WARNING_PATH, ANNOUNCEMENT_SIGNAL_PATH, DOOR_WARNING_PATH } from '../src/game/announcementSignal';
+import { RECORDED_ANNOUNCEMENTS } from '../src/game/stationRecordings';
 import { DOOR_WARNING, DOOR_SLIDE } from '../src/game/timetable';
 
 const metadata = (path: string) => catalog[path.slice('audio/'.length) as keyof typeof catalog];

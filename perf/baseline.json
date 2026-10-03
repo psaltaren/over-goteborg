@@ -1,208 +1,128 @@
 {
-  "at": "2026-09-29T22:27:33.730Z",
-  "commit": "160b4ea",
+  "at": "2026-10-03T17:12:11.355Z",
+  "commit": "c371768",
   "fps": {
     "desktop": {
-      "T-Centralen, platform": {
+      "Drottningtorget": {
         "fps": 60,
         "p95": 16.7,
         "slow": 0,
         "worst": 17,
         "hitches": 0,
         "pixelRatio": 2,
-        "calls": 116,
-        "triangles": 472887
+        "calls": 61,
+        "triangles": 143716
       },
-      "Slussen, open air": {
+      "Brunnsparken": {
         "fps": 60,
         "p95": 16.7,
         "slow": 0,
         "worst": 17,
         "hitches": 0,
         "pixelRatio": 2,
-        "calls": 166,
-        "triangles": 830456
+        "calls": 52,
+        "triangles": 203439
       },
-      "Gamla stan, over the water": {
-        "fps": 60,
-        "p95": 16.7,
-        "slow": 0,
-        "worst": 17,
-        "hitches": 0,
-        "pixelRatio": 2,
-        "calls": 193,
-        "triangles": 1005061
-      },
-      "City passage, rush hour": {
+      "Kungsportsplatsen": {
         "fps": 60,
         "p95": 16.8,
         "slow": 0,
         "worst": 17,
         "hitches": 0,
         "pixelRatio": 2,
-        "calls": 57,
-        "triangles": 643241
+        "calls": 62,
+        "triangles": 177198
       },
-      "Kista": {
-        "fps": 60,
-        "p95": 16.8,
-        "slow": 0,
-        "worst": 17,
-        "hitches": 0,
-        "pixelRatio": 2,
-        "calls": 87,
-        "triangles": 377635
-      },
-      "Odenplan, the street": {
+      "Järntorget": {
         "fps": 60,
         "p95": 16.7,
         "slow": 0,
         "worst": 17,
         "hitches": 0,
         "pixelRatio": 2,
-        "calls": 105,
-        "triangles": 448344
+        "calls": 70,
+        "triangles": 151107
       },
-      "A minute aboard": {
+      "Walking the inner city": {
         "fps": 60,
         "p95": 16.7,
         "slow": 0,
         "worst": 17,
         "hitches": 0,
         "pixelRatio": 2,
-        "calls": 150,
-        "triangles": 1017293
-      },
-      "Riding out to Akalla": {
-        "fps": 60,
-        "p95": 16.7,
-        "slow": 0,
-        "worst": 17,
-        "hitches": 0,
-        "pixelRatio": 2,
-        "calls": 29,
-        "triangles": 238232
-      },
-      "Riding out to Hässelby": {
-        "fps": 60,
-        "p95": 16.7,
-        "slow": 0,
-        "worst": 17,
-        "hitches": 0,
-        "pixelRatio": 2,
-        "calls": 139,
-        "triangles": 552937
+        "calls": 52,
+        "triangles": 123010
       }
     },
     "phone": {
-      "T-Centralen, platform": {
-        "fps": 60,
-        "p95": 16.7,
-        "slow": 0,
-        "worst": 33,
-        "hitches": 0,
-        "pixelRatio": 1.5,
-        "calls": 99,
-        "triangles": 472793
-      },
-      "Slussen, open air": {
-        "fps": 59,
-        "p95": 16.8,
-        "slow": 3,
-        "worst": 33,
-        "hitches": 0,
-        "pixelRatio": 1.5,
-        "calls": 132,
-        "triangles": 830114
-      },
-      "Gamla stan, over the water": {
-        "fps": 60,
-        "p95": 16.8,
-        "slow": 0,
-        "worst": 17,
-        "hitches": 0,
-        "pixelRatio": 1.5,
-        "calls": 163,
-        "triangles": 1003239
-      },
-      "City passage, rush hour": {
+      "Drottningtorget": {
         "fps": 60,
         "p95": 16.7,
         "slow": 0,
         "worst": 17,
         "hitches": 0,
         "pixelRatio": 1.5,
-        "calls": 54,
-        "triangles": 646749
+        "calls": 37,
+        "triangles": 84383
       },
-      "Kista": {
+      "Brunnsparken": {
         "fps": 60,
         "p95": 16.7,
         "slow": 0,
         "worst": 17,
-        "hitches": 0,
-        "pixelRatio": 1.5,
-        "calls": 84,
-        "triangles": 377569
-      },
-      "Odenplan, the street": {
-        "fps": 59,
-        "p95": 16.8,
-        "slow": 2,
-        "worst": 33,
-        "hitches": 0,
-        "pixelRatio": 1.5,
-        "calls": 103,
-        "triangles": 448340
-      },
-      "A minute aboard": {
-        "fps": 60,
-        "p95": 16.8,
-        "slow": 1,
-        "worst": 50,
-        "hitches": 1,
-        "pixelRatio": 1.5,
-        "calls": 142,
-        "triangles": 1017195
-      },
-      "Riding out to Akalla": {
-        "fps": 60,
-        "p95": 16.7,
-        "slow": 0,
-        "worst": 33,
         "hitches": 0,
         "pixelRatio": 1.5,
         "calls": 27,
-        "triangles": 238228
+        "triangles": 121784
       },
-      "Riding out to Hässelby": {
-        "fps": 59,
+      "Kungsportsplatsen": {
+        "fps": 60,
         "p95": 16.8,
-        "slow": 2,
-        "worst": 50,
-        "hitches": 1,
+        "slow": 0,
+        "worst": 17,
+        "hitches": 0,
         "pixelRatio": 1.5,
-        "calls": 139,
-        "triangles": 552937
+        "calls": 23,
+        "triangles": 105765
+      },
+      "Järntorget": {
+        "fps": 60,
+        "p95": 16.8,
+        "slow": 0,
+        "worst": 17,
+        "hitches": 0,
+        "pixelRatio": 1.5,
+        "calls": 27,
+        "triangles": 91538
+      },
+      "Walking the inner city": {
+        "fps": 60,
+        "p95": 16.7,
+        "slow": 0,
+        "worst": 17,
+        "hitches": 0,
+        "pixelRatio": 1.5,
+        "calls": 25,
+        "triangles": 62130
       }
     }
   },
   "load": {
     "desktop": {
-      "downloadS": 0.15990000009536742,
-      "bytes": 1076103,
+      "downloadS": 0.12110000002384186,
+      "bytes": 873500,
       "wasmBytes": 652517,
-      "wasmDoneS": 0.15990000009536742,
-      "compileS": 0.06889999997615814,
-      "readyS": 1.6763000000715256
+      "wasmDoneS": 0.12110000002384186,
+      "compileS": 0.015300000071525573,
+      "readyS": 0.4006000000238419
     },
     "phone": {
-      "downloadS": 5.341600000023842,
-      "bytes": 1076103,
+      "downloadS": 4.374100000023842,
+      "bytes": 873500,
       "wasmBytes": 652517,
-      "wasmDoneS": 5.341600000023842,
-      "compileS": 4.4281999999284745,
-      "readyS": 9.081699999928475
+      "wasmDoneS": 4.374100000023842,
+      "compileS": 3.4363000000715256,
+      "readyS": 5.479699999928474
     }
   }
 }

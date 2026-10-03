@@ -83,3 +83,38 @@ export function bbox(r: Rect): [number, number, number, number] {
   const r6 = (v: number) => Math.round(v * 1e6) / 1e6;
   return [r6(Math.min(...lats)), r6(Math.min(...lons)), r6(Math.max(...lats)), r6(Math.max(...lons))];
 }
+
+/**
+ * The street, in meters above the underground's rail top at y = 0: the city is laid flat at this height, so that P6 can
+ * lay Västlänken's station under it with Joel's builders (a hall 8.5 m under the street, as his stations have).
+ */
+export const STREET_Y = 18;
+
+/**
+ * The places of the inner city, where its tram stops are (OSM's `railway=tram_stop`, the middle of each stop's
+ * platforms): where the game starts, what the status line names, and the debug API's and the quality gate's scenes.
+ */
+export const PLACES: Record<string, Pt> = Object.fromEntries(([
+  ['Drottningtorget', 57.707731, 11.973195],
+  ['Nils Ericsonsplatsen', 57.709126, 11.971084],
+  ['Lilla Bommen', 57.709186, 11.96676],
+  ['Brunnsparken', 57.70708, 11.96845],
+  ['Kungsportsplatsen', 57.704049, 11.969708],
+  ['Domkyrkan', 57.704278, 11.963704],
+  ['Grönsakstorget', 57.702526, 11.964342],
+  ['Stenpiren', 57.70581, 11.95774],
+  ['Järntorget', 57.700067, 11.952939],
+] as const).map(([name, lat, lon]) => [name, toGame(lat, lon)]));
+
+/** The named place nearest a point, and how far it is. */
+export function placeNear(x: number, z: number): { name: string; d: number } {
+  let best = { name: '', d: Infinity };
+  for (const [name, [px, pz]] of Object.entries(PLACES)) {
+    const d = Math.hypot(px - x, pz - z);
+    if (d < best.d) best = { name, d };
+  }
+  return best;
+}
+
+/** The yaw (as `Player` has it: 0 looks toward -z) that looks from one point toward another. */
+export const yawToward = (from: Pt, to: Pt) => Math.atan2(-(to[0] - from[0]), -(to[1] - from[1]));

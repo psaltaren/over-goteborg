@@ -19,7 +19,7 @@
 // floor but costs more than the noise between runs. `--accept` keeps the floor. A scene that misses on its frame times
 // is timed once more and fails only if it misses again, and a machine already busy before the timing is noted.
 
-import { existsSync } from 'node:fs';
+import { existsSync, rmSync } from 'node:fs';
 import { cpus, loadavg } from 'node:os';
 import { join } from 'node:path';
 import type { FpsReport, Result } from './fps';
@@ -34,8 +34,8 @@ const PERF = everything || flags.has('--perf');
 /** A little of the performance gates, fast enough for every push: the rest runs at night. */
 const SMOKE = !PERF && flags.has('--smoke');
 /** The scenes and leak scenario the smoke level runs: the ones that have broken before. */
-const SMOKE_SCENES = 'Gamla stan,Akalla';
-const SMOKE_LEAKS = 'Travelling';
+const SMOKE_SCENES = 'Brunnsparken,Walking';
+const SMOKE_LEAKS = 'Walking';
 const WEB = everything || flags.has('--web');
 const DEVICE = flags.has('--device');
 const ACCEPT = flags.has('--accept');
@@ -171,11 +171,16 @@ if ((PERF || SMOKE) && !failures.length) {
   const stopDev = await serve('dev server', ['bun', 'scripts/dev.ts', '--port', String(devPort), '--strictPort'], devUrl);
   try {
     const memJson = join(SCRATCH, 'mem.json');
+    // An earlier run's report must not stand in for this one's.
+    rmSync(memJson, { force: true });
     const memArgs = ['bun', 'scripts/mem.ts', '--url', devUrl, '--json', memJson, ...(SMOKE ? ['--scene', SMOKE_LEAKS, '--rounds', '3'] : [])];
     if (!(await run('memory leaks', memArgs))) fail('memory leaks (see above)');
     if (existsSync(memJson)) last.mem = await Bun.file(memJson).json();
+    // A filter that matches no scenario would measure nothing and pass.
+    if (SMOKE && !Object.keys(last.mem ?? {}).some((n) => n.toLowerCase().includes(SMOKE_LEAKS.toLowerCase()))) fail(`no leak scenario matches "${SMOKE_LEAKS}" (SMOKE_LEAKS in scripts/check.ts)`);
 
     const fpsJson = join(SCRATCH, 'fps.json');
+    rmSync(fpsJson, { force: true });
     const fpsArgs = ['bun', 'scripts/fps.ts', '--url', devUrl, '--json', fpsJson, ...(SMOKE ? ['--only', 'phone', '--scene', SMOKE_SCENES, '--seconds', '5'] : []), ...(DEVICE ? ['--device'] : [])];
     const busy = machineBusy();
     if (busy) console.log(`\n  NOTE ${busy}: frame times may suffer from it, not from the game`);
@@ -183,6 +188,12 @@ if ((PERF || SMOKE) && !failures.length) {
     else {
       const report: FpsReport = await Bun.file(fpsJson).json();
       last.fps = report;
+      // A filter that matches no scene would time nothing and pass: each part of it must have matched one.
+      if (SMOKE) {
+        for (const part of SMOKE_SCENES.split(',')) {
+          if (!Object.keys(report.phone ?? {}).some((n) => n.toLowerCase().includes(part.trim().toLowerCase()))) fail(`no scene matches "${part}" (SMOKE_SCENES in scripts/check.ts)`);
+        }
+      }
       // A scene that misses on its timing is timed once more, and fails only if it misses again: a lone hitch from
       // something else on the machine is not a regression. Draw calls and triangles do not change between runs.
       const again: Record<string, string[]> = {};

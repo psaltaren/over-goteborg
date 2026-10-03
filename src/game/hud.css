@@ -25,6 +25,9 @@
   text-align: center;
   font: 700 25px/31px Arial, sans-serif;
 }
+/* The city's game: no metro sign, so the status starts at the card's edge. */
+.hud.is-city .hud-status { padding-left: 22px; }
+.hud.is-city .hud-status::before { content: none; }
 .hud-line {
   margin: 0 0 5px;
   font-size: 9px;

@@ -60,11 +60,12 @@ function game(): void {
       const physicsReady = import('./game/physics').then(({ loadRapier }) => loadRapier());
       // Attach the rejection handler immediately; startGame still receives the original promise.
       void physicsReady.catch(() => {});
-      const { startGame } = await import('./game/boot');
+      const { startGame } = await import('./game/city/boot');
       menu.hidden = true;
       game.hidden = false;
       document.body.classList.add('is-playing');
-      await startGame(game, { showcase, physicsReady, resume: again, station, life, since });
+      // The city has no tour, life or station of its own yet: the landing page's buttons all start it at its spawn.
+      await startGame(game, { physicsReady, resume: again, since });
     } catch (err) {
       console.error(err);
       // A page left open across a deploy: the new build opens the game instead.

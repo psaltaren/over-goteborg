@@ -35,23 +35,8 @@ interface Scenario {
 
 // Helpers defined in the page before the rounds: `settle()` steps frames until nothing is left to build, `wait(ms)`.
 const SCENARIOS: Scenario[] = [
-  // Out along the branches and back: stations are built on the way and taken down again far behind.
-  { name: 'Travelling the network', round: 'for (const i of [11, 23, 94, 0]) { __us.goto(i); settle(); }' },
-  // A life on the blue line: the time machine changes the trains' stock, and the reflections in the windows with it.
-  {
-    name: 'A life on the blue line',
-    round: `__us.lifeScene(0); await wait(900); __us.step(4, 15);
-      for (let i = 1; i < 8; i++) { __us.lifeScene(i); __us.step(4, 15); }
-      window.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyX', key: 'x' })); await wait(300);
-      __us.step(1, 15); __us.goto(0); settle();`,
-  },
-  // Into the driver's cab and out again.
-  {
-    name: 'Driving and stopping',
-    round: `__us.drive(); await wait(1200); __us.step(20, 15);
-      window.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyK', key: 'k' })); await wait(1200);
-      __us.step(2, 15); __us.goto(0); settle();`,
-  },
+  // Across the city and back: the squares are built where the player stands and taken down again far behind.
+  { name: 'Walking the city', round: "for (const p of ['Järntorget', 'Lilla Bommen', 'Kungsportsplatsen', 'Drottningtorget']) { await __us.go(p); settle(); }" },
 ];
 
 /** Hooks three.js and the canvases in the page, so what is uploaded, freed and still alive can be counted. */

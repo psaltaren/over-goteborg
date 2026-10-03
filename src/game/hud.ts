@@ -3,7 +3,7 @@ import { label, lang, text } from './i18n/text';
 import { FEEDBACK_MAIL } from './crash';
 import type { Network } from './line';
 import type { DriverReadout } from './driver';
-import { networkMapLayout } from './world/station';
+import { networkMapLayout } from './networkMap';
 import { realTrainsAvailable } from './sl';
 import type { Explored } from './explore';
 import { keyName, settings, type Action } from './settings';
@@ -96,7 +96,8 @@ export class Hud {
   private lastTitle = '';
   private lastSub = '';
 
-  constructor(parent: HTMLElement, private readonly net: Network, private readonly touch = false) {
+  /** @param net the metro's network for the map; none (the city), and there is no map. */
+  constructor(parent: HTMLElement, private readonly net: Network | null, private readonly touch = false) {
     this.root = document.createElement('div');
     this.root.className = 'hud';
     this.root.innerHTML = `
@@ -560,8 +561,8 @@ export class Hud {
    * is past.
    */
   private mapPoint(x: number, spots: Array<{ x: number; y: number }>): { x: number; y: number } {
-    const xs = this.net.x;
-    for (const l of this.net.layout.links) {
+    const xs = this.net!.x;
+    for (const l of this.net!.layout.links) {
       let xa = xs[l.a];
       let xb = xs[l.b];
       if (l.portal) {
@@ -575,7 +576,7 @@ export class Hud {
     let near = 0;
     xs.forEach((sx, i) => { if (Math.abs(sx - x) < Math.abs(xs[near] - x)) near = i; });
     // Beyond a line's end: a little further out, the way the line was going.
-    const link = this.net.layout.links.find((l) => l.a === near || l.b === near);
+    const link = this.net!.layout.links.find((l) => l.a === near || l.b === near);
     const from = link ? spots[link.a === near ? link.b : link.a] : spots[near];
     const dx = spots[near].x - from.x;
     const dy = spots[near].y - from.y;
@@ -590,7 +591,7 @@ export class Hud {
    */
   private mapLinks(): Array<{ a: number; b: number; line: number; shift: number }> {
     if (this.links) return this.links;
-    const net = this.net;
+    const net = this.net!;
     const key = (a: number, b: number) => `${Math.min(a, b)}-${Math.max(a, b)}`;
     const count = new Map<string, number>();
     for (const l of net.layout.links) count.set(key(l.a, l.b), (count.get(key(l.a, l.b)) ?? 0) + 1);
@@ -609,6 +610,8 @@ export class Hud {
 
   /** @param explored where the player has been: the rest of the network is drawn faint until visited */
   drawMap(trains: MapTrain[], player: { x: number; z: number }, explored?: Explored): void {
+    const net = this.net;
+    if (!net) return;
     const ctx = this.mapCtx;
     // Drawn at the screen's own resolution, so it stays sharp; hidden (a touch screen's closed map), it waits.
     const cssW = this.map.clientWidth;
@@ -622,7 +625,6 @@ export class Hud {
     // The window's size in network map units.
     const w = cssW / MAP_ZOOM;
     const h = cssH / MAP_ZOOM;
-    const net = this.net;
     this.spots ??= networkMapLayout(net);
     const spots = this.spots;
     ctx.clearRect(0, 0, w, h);

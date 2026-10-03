@@ -447,13 +447,8 @@ export function mapLayout(line: LineDef, w: number, h: number): Array<{ x: numbe
   }));
 }
 
-/** The whole network map's size, in pixels of the HUD map (which shows a window of it around the player). */
-export const NETWORK_MAP = { w: 1500, h: 1150 };
-
-/** Where each station of the network sits on the HUD map, in `NETWORK_MAP` pixels. */
-export function networkMapLayout(net: Network): Array<{ x: number; y: number; label: 'above' | 'below' }> {
-  return net.stations.map((s, i) => ({ x: s.map[0] * NETWORK_MAP.w, y: s.map[1] * NETWORK_MAP.h, label: i % 2 ? 'below' : 'above' }));
-}
+/** The HUD map's size and its stations' places (in `networkMap.ts`, which the HUD imports without the world). */
+export { NETWORK_MAP, networkMapLayout } from '../networkMap';
 
 function lineMap(line: LineDef, here: number): CanvasSign {
   return createCanvasSign(1024, 448, (ctx, w, h) => {

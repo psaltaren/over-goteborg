@@ -60,7 +60,7 @@ function game(): void {
       const physicsReady = import('./game/physics').then(({ loadRapier }) => loadRapier());
       // Attach the rejection handler immediately; startGame still receives the original promise.
       void physicsReady.catch(() => {});
-      const { startGame } = await import('./game/boot');
+      const { startGame } = await import('./game/city/boot');
       menu.hidden = true;
       game.hidden = false;
       document.body.classList.add('is-playing');

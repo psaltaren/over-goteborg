@@ -6,7 +6,8 @@ import puppeteer, { type Browser } from 'puppeteer-core';
 
 const dist = join(import.meta.dir, '..', 'dist');
 const manifest = await Bun.file(join(dist, '.vite/manifest.json')).json();
-if (!manifest['src/game/boot.ts']) {
+// The game the landing page starts (`src/main.ts`): the city's.
+if (!manifest['src/game/city/boot.ts']) {
   console.log('Landing-only build: no game startup to check.');
   process.exit(0);
 }

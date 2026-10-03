@@ -5,8 +5,7 @@ import { mix, rgb, type RGB } from '../gfx/color';
 import { fbm3 } from '../gfx/noise';
 import { STREET } from '../layout';
 import type { Physics, StaticCollider } from '../physics';
-import { oldFacadeTexture } from './city';
-import { facadeTexture } from './outdoor';
+import { facadeTexture, oldFacadeTexture } from './facades';
 import type { Section } from './section';
 import { place, textSign } from './signage';
 import type { Rect, StreetFrame } from './street';
@@ -47,8 +46,16 @@ export interface StreetPlace {
   ox: number;
   oz: number;
   turn: number;
-  /** The square: the ground round it is laid up to its edge, and nothing is built on it. */
-  square: Rect;
+  /** The square: the ground round it is laid up to its edge, and nothing is built on it. None for a square of city. */
+  square: Rect | null;
+  /** The middle the lit windows, the street signs and the ground are measured from: the square's, unless given. */
+  middle?: [number, number];
+  /** Where the base ground is laid: out to the fog round the middle, unless given (a city square lays its own). */
+  ground?: Rect;
+  /** How far from the middle the lit windows (160 m) and the street signs (110 m) go, unless given. */
+  reach?: number;
+  /** The most street lamps laid (24). */
+  lamps?: number;
   /** More kept clear of buildings (a hall's own building). */
   clear: Rect[];
   /** Where one can walk: the walls within it get colliders. */
@@ -254,24 +261,30 @@ export function insideRing(ring: Vector2[], x: number, z: number): boolean {
 export function* streetOsmSteps(s: Section, physics: Physics, file: StreetFile, at: StreetPlace): Generator<void, StreetOsm> {
   const { y: G, ox, oz, square: SQ, walk } = at;
   const laid: Laid = at;
-  // No ground under the square, nor through the hall's own building beside it out of a door (`clear`).
-  const hole = at.clear.reduce((u, q) => ({ x0: Math.min(u.x0, q.x0), x1: Math.max(u.x1, q.x1), z0: Math.min(u.z0, q.z0), z1: Math.max(u.z1, q.z1) }), SQ);
-  const cx = (SQ.x0 + SQ.x1) / 2, cz = (SQ.z0 + SQ.z1) / 2;
+  // Kept clear of buildings, trees and lamps: the square and the hall's own building beside it (`clear`).
+  const keepClear = [...(SQ ? [SQ] : []), ...at.clear];
+  // No ground under them either. Without a square or a hall, no hole at all (an empty rect, which nothing hits).
+  const hole = keepClear.reduce((u, q) => ({ x0: Math.min(u.x0, q.x0), x1: Math.max(u.x1, q.x1), z0: Math.min(u.z0, q.z0), z1: Math.max(u.z1, q.z1) }), { x0: Infinity, x1: -Infinity, z0: Infinity, z1: -Infinity });
+  const [cx, cz] = at.middle ?? (SQ ? [(SQ.x0 + SQ.x1) / 2, (SQ.z0 + SQ.z1) / 2] : [ox, oz]);
   const colliders: StaticCollider[] = [];
   const r = (k: number, salt: number) => hash01(at.seed * 7919 + k, salt);
 
   // The base, out to the fog, round the square.
   const base = file.urban ? PAVING : GRASS;
-  const [X0, X1, Z0, Z1] = [cx - GROUND_REACH, cx + GROUND_REACH, cz - GROUND_REACH, cz + GROUND_REACH];
+  const ground = at.ground ?? { x0: cx - GROUND_REACH, x1: cx + GROUND_REACH, z0: cz - GROUND_REACH, z1: cz + GROUND_REACH };
+  const [X0, X1, Z0, Z1] = [ground.x0, ground.x1, ground.z0, ground.z1];
   const flat = (b: MeshBuilder, x0: number, x1: number, z0: number, z1: number, y: number, paint: (p: Vector3) => RGB, cell: number) => {
     if (x1 - x0 < 0.01 || z1 - z0 < 0.01) return;
     b.gridQuad(new Vector3(x0, y, z0), new Vector3(x0, y, z1), new Vector3(x1, y, z1), new Vector3(x1, y, z0), paint, cell);
   };
   const yb = G + LAYER.base;
-  flat(s.lit, X0, X1, Z0, hole.z0, yb, base, 12);
-  flat(s.lit, X0, X1, hole.z1, Z1, yb, base, 12);
-  flat(s.lit, X0, hole.x0, hole.z0, hole.z1, yb, base, 12);
-  flat(s.lit, hole.x1, X1, hole.z0, hole.z1, yb, base, 12);
+  if (!keepClear.length) flat(s.lit, X0, X1, Z0, Z1, yb, base, 12);
+  else {
+    flat(s.lit, X0, X1, Z0, hole.z0, yb, base, 12);
+    flat(s.lit, X0, X1, hole.z1, Z1, yb, base, 12);
+    flat(s.lit, X0, hole.x0, hole.z0, hole.z1, yb, base, 12);
+    flat(s.lit, hole.x1, X1, hole.z0, hole.z1, yb, base, 12);
+  }
 
   /**
    * A triangle of the ground, less what lies under the square (`hole`): hidden under its paving, but in plain view down
@@ -351,9 +364,10 @@ export function* streetOsmSteps(s: Section, physics: Physics, file: StreetFile, 
 
   // Buildings: walls with the facade's storeys running round from the first corner, a stone ground floor in the city,
   // flat tin roofs or pitched ones over houses, and colliders on the walls within reach.
-  const texture = file.urban ? oldFacadeTexture() : facadeTexture();
+  const texture = () => (file.urban ? oldFacadeTexture() : facadeTexture());
   const glass = file.urban ? GLASS.old : GLASS.flats;
-  const facade = s.artLayer(texture);
+  // A dry build makes no geometry, and so needs no texture to lay it with (none is drawn without a document).
+  const facade = s.dry ? s.lit : s.artLayer(texture());
   const lit = s.dry ? null : new MeshBuilder();
   const walls: Array<{ a: Vector2; b: Vector2; n: Vector2 }> = [];
   const a = new Vector3(), b = new Vector3(), c = new Vector3(), d = new Vector3();
@@ -372,7 +386,7 @@ export function* streetOsmSteps(s: Section, physics: Physics, file: StreetFile, 
     if (at.inflate) ring = inflated(ring, at.inflate);
     const xs = ring.map((p) => p.x), zs = ring.map((p) => p.y);
     const [bx0, bx1, bz0, bz1] = [Math.min(...xs), Math.max(...xs), Math.min(...zs), Math.max(...zs)];
-    if ([SQ, ...at.clear].some((q) => reaches(ring, grown(q, 1)))) continue;
+    if (keepClear.some((q) => reaches(ring, grown(q, 1)))) continue;
     const height = (bd[0] as number) / 10;
     const pitched = bd[2] === 1 && ring.length === 4;
     const kind = pitched ? HOUSES : file.urban ? PLASTER : FLATS;
@@ -380,7 +394,7 @@ export function* streetOsmSteps(s: Section, physics: Physics, file: StreetFile, 
     const roof = pitched ? pitchedRoof(ring, height, G) : null;
     const top = G + (roof ? roof.eaves : height);
     const plinth = file.urban && height > 6 ? G + PLINTH_H : G - 0.5;
-    const near = Math.hypot((bx0 + bx1) / 2 - cx, (bz0 + bz1) / 2 - cz) < 160;
+    const near = Math.hypot((bx0 + bx1) / 2 - cx, (bz0 + bz1) / 2 - cz) < (at.reach ?? 160);
     let u = 0;
     for (let i = 0; i < ring.length; i++) {
       const p = ring[i], q = ring[(i + 1) % ring.length];
@@ -447,7 +461,7 @@ export function* streetOsmSteps(s: Section, physics: Physics, file: StreetFile, 
   const crown = new SphereGeometry(2.4, 7, 5);
   const pine = new ConeGeometry(2.1, 7.5, 7);
   for (const [k, t] of points(file.trees, 0, file.trees.length / 2, laid).entries()) {
-    if ([SQ, ...at.clear].some((q) => within(q, t.x, t.y, 1))) continue;
+    if (keepClear.some((q) => within(q, t.x, t.y, 1))) continue;
     s.lit.geometry(trunk, m.makeTranslation(t.x, G + 1.2, t.y), rgb(0x4e3e30));
     if (!file.urban && r(k, 73) < 0.3) s.lit.geometry(pine, m.makeTranslation(t.x, G + 5.4, t.y), mix(rgb(0x1f4028), rgb(0x345a34), r(k, 74)));
     else s.lit.geometry(crown, m.makeScale(1, 1.15, 1).setPosition(t.x, G + 4.8, t.y), mix(rgb(0x4a7a30), rgb(0x86a846), r(k, 74)));
@@ -461,15 +475,15 @@ export function* streetOsmSteps(s: Section, physics: Physics, file: StreetFile, 
   for (const { kind, width, line } of roads) {
     if (kind === 2) continue;
     let carry = 14;
-    for (let i = 0; i + 1 < line.length && lamps < 24; i++) {
+    for (let i = 0; i + 1 < line.length && lamps < (at.lamps ?? 24); i++) {
       const a0 = line[i], a1 = line[i + 1];
       const len = a0.distanceTo(a1);
-      for (let t = carry; t < len && lamps < 24; t += 28) {
+      for (let t = carry; t < len && lamps < (at.lamps ?? 24); t += 28) {
         const dir = a1.clone().sub(a0).divideScalar(len);
         const side = (lamps % 2) * 2 - 1;
         const x = a0.x + dir.x * t - dir.y * side * (width / 2 + 0.8);
         const z = a0.y + dir.y * t + dir.x * side * (width / 2 + 0.8);
-        if (!within(walk, x, z) || [SQ, ...at.clear].some((q) => within(q, x, z, 1))) continue;
+        if (!within(walk, x, z) || keepClear.some((q) => within(q, x, z, 1))) continue;
         s.lit.box({ x: x - 0.07, y: G, z: z - 0.07 }, { x: x + 0.07, y: G + 5.4, z: z + 0.07 }, rgb(0x2e3238));
         s.unlit.box({ x: x - 0.25, y: G + 5.1, z: z - 0.18 }, { x: x + 0.25, y: G + 5.3, z: z + 0.18 }, LAMP);
         s.light(x, G + 5, z, rgb(0xffdca8), 1.1, 13);
@@ -481,7 +495,7 @@ export function* streetOsmSteps(s: Section, physics: Physics, file: StreetFile, 
   }
 
   // The streets' names, in white on blue, on the nearest house at each corner of the square's neighbourhood.
-  if (!s.dry) streetSigns(s, roads, walls, file.names, cx, cz, G);
+  if (!s.dry) streetSigns(s, roads, walls, file.names, cx, cz, G, at.reach ?? 110);
 
   let windows: Mesh | null = null;
   if (lit && lit.vertexCount) {
@@ -495,7 +509,7 @@ export function* streetOsmSteps(s: Section, physics: Physics, file: StreetFile, 
 }
 
 /** A sign with each street's name within reach: on the wall of a house along it, or else on a post by the kerb. */
-function streetSigns(s: Section, roads: Array<{ kind: number; width: number; name: number; line: Vector2[] }>, walls: Array<{ a: Vector2; b: Vector2; n: Vector2 }>, names: string[], cx: number, cz: number, G: number): void {
+function streetSigns(s: Section, roads: Array<{ kind: number; width: number; name: number; line: Vector2[] }>, walls: Array<{ a: Vector2; b: Vector2; n: Vector2 }>, names: string[], cx: number, cz: number, G: number, reach: number): void {
   const centre = new Vector2(cx, cz);
   const best = new Map<number, { p: Vector2; d: Vector2; width: number; dist: number }>();
   for (const road of roads) {
@@ -509,7 +523,7 @@ function streetSigns(s: Section, roads: Array<{ kind: number; width: number; nam
       const p = a.clone().addScaledVector(ab, t);
       const dist = p.distanceTo(centre);
       const known = best.get(road.name);
-      if (dist < 110 && (!known || dist < known.dist)) best.set(road.name, { p, d: ab.divideScalar(len), width: road.width, dist });
+      if (dist < reach && (!known || dist < known.dist)) best.set(road.name, { p, d: ab.divideScalar(len), width: road.width, dist });
     }
   }
   for (const [name, { p, d, width }] of [...best].sort((x, y) => x[1].dist - y[1].dist).slice(0, 6)) {

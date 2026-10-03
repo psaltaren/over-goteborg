@@ -1,15 +1,17 @@
 import { buildViaduct } from './canopy';
-import { ConeGeometry, CylinderGeometry, Matrix4, SphereGeometry, type Texture, Vector3 } from 'three';
+import { ConeGeometry, CylinderGeometry, Matrix4, SphereGeometry, Vector3 } from 'three';
 import { hash01 } from '../clock';
 import { mix, rgb, type RGB } from '../gfx/color';
 import { fbm3, noise3 } from '../gfx/noise';
-import { cached, canvas, finish } from '../gfx/textures';
+import { facadeTexture } from './facades';
 import { TRACK_Z, TUBE_BOTTOM, TUBE_HALF_W, TUBE_TOP, TUBE_WALL_H } from '../layout';
 import type { Physics } from '../physics';
 import { buildOsm, nearBuilding, type OsmPatch } from './osm';
 import { addTrack, PAINT } from './parts';
 import type { Section } from './section';
 import { archHole, wallWithHoles, type ProfilePoint } from './shapes';
+
+export { facadeTexture };
 
 /**
  * The open air: most of the red and green lines' suburban stretches run on
@@ -29,21 +31,6 @@ export const OPEN = {
 const GRASS = (p: Vector3): RGB => mix(rgb(0x4d6a34), rgb(0x7a8f48), fbm3(p.x * 0.05, 0, p.z * 0.05, 3, 311) * 0.8 + noise3(p.x * 0.6, 0, p.z * 0.6, 312) * 0.25);
 const CONCRETE = (p: Vector3): RGB => mix(rgb(0x8e8b84), rgb(0xb2aea4), fbm3(p.x * 0.3, p.y * 0.3, p.z * 0.3, 3, 313));
 
-/** A block of flats' facade: rows of windows every storey, three metres apart. */
-export function facadeTexture(): Texture {
-  return cached('facade', () => {
-    const [c, ctx] = canvas(64, 64);
-    ctx.fillStyle = '#e8e4da';
-    ctx.fillRect(0, 0, 64, 64);
-    ctx.fillStyle = '#39424c';
-    ctx.fillRect(14, 16, 36, 30);
-    ctx.fillStyle = '#d8d4c8';
-    ctx.fillRect(31, 16, 2, 30);
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.12)';
-    ctx.fillRect(0, 60, 64, 4);
-    return finish(c, 3);
-  });
-}
 
 /**
  * Fenced ground from `x0` to `x1` on both sides of the tracks, with trees and buildings, by `seed`. Within the reach

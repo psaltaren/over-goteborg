@@ -153,8 +153,8 @@
     "toilet": "En torrtoalett: en hink, en sits och en rulle plastpåsar. Någon har ritat ett hjärta på väggen."
   },
   "loading": {
-    "title": "Bygger tunnelbanan …",
-    "note": "Berget sprängs, perrongerna gjuts och rulltrapporna monteras."
+    "title": "Bygger staden …",
+    "note": "Husen reses, gatorna läggs och kajerna muras runt kanalerna."
   },
   "clock": {
     "lastTrainGone": "Sista tåget har gått",
@@ -808,8 +808,8 @@
   "support": "Gillar du spelet? Bjud Joel på en enkelbiljett",
   "feedback": "Hittat en bugg eller har en idé? Mejla Joel",
   "unstuck": {
-    "button": "Fastnat? Tillbaka till perrongen",
-    "done": "Tillbaka på perrongen."
+    "button": "Fastnat? Tillbaka till gatan",
+    "done": "Tillbaka på gatan."
   },
   "battery": {
     "toggle": "Batteriläge",

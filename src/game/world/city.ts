@@ -1,13 +1,14 @@
-import { BoxGeometry, ConeGeometry, CylinderGeometry, Matrix4, Vector3, type Texture } from 'three';
+import { BoxGeometry, ConeGeometry, CylinderGeometry, Matrix4, Vector3 } from 'three';
 import { hash01 } from '../clock';
-import { cached, canvas, finish } from '../gfx/textures';
 import { mix, rgb, type RGB } from '../gfx/color';
 import { fbm3 } from '../gfx/noise';
 import type { Network } from '../line';
 import type { Physics } from '../physics';
-import { facadeTexture } from './outdoor';
+import { facadeTexture, oldFacadeTexture } from './facades';
 import { addTrack } from './parts';
 import type { Section } from './section';
+
+export { oldFacadeTexture };
 
 /**
  * The inner city by the water, where the red and green lines come out of the
@@ -144,24 +145,6 @@ export function buildCity(s: Section, x0: number, x1: number, halfW: number, at:
   }
 }
 
-/** An old town house's facade: plastered wall, tall windows with pale frames, a cornice every storey. */
-export function oldFacadeTexture(): Texture {
-  return cached('old-facade', () => {
-    const [c, ctx] = canvas(64, 64);
-    ctx.fillStyle = '#ece6d8';
-    ctx.fillRect(0, 0, 64, 64);
-    ctx.fillStyle = '#f8f4ea';
-    ctx.fillRect(18, 8, 28, 44);
-    ctx.fillStyle = '#2c343c';
-    ctx.fillRect(21, 11, 22, 38);
-    ctx.fillStyle = '#e8e2d4';
-    ctx.fillRect(31, 11, 2, 38);
-    ctx.fillRect(21, 26, 22, 2);
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.1)';
-    ctx.fillRect(0, 58, 64, 6);
-    return finish(c, 3.2);
-  });
-}
 
 /** A pitched roof along x over a house from `z0` to `z1`, its ridge 4 m over the eaves at `y`. */
 function roof(s: Section, x0: number, x1: number, z0: number, z1: number, y: number, colour: number): void {

@@ -49,8 +49,8 @@
     "driverHelp": "Drive: + and − move the controller."
   },
   "loading": {
-    "title": "Building the metro…",
-    "note": "Blasting the rock, casting the platforms and fitting the escalators."
+    "title": "Building the city…",
+    "note": "Raising the houses, laying the streets and walling the quays along the canals."
   },
   "driver": {
     "title": "Driver mode",
@@ -159,8 +159,8 @@
   "support": "Enjoying the game? Buy Joel a single ticket",
   "feedback": "Found a bug or have an idea? Email Joel",
   "unstuck": {
-    "button": "Stuck? Back to the platform",
-    "done": "Back on the platform."
+    "button": "Stuck? Back to the street",
+    "done": "Back on the street."
   },
   "battery": {
     "toggle": "Battery saver",

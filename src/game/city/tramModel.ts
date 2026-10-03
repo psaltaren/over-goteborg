@@ -8,7 +8,7 @@
 import { BoxGeometry, Matrix4, Vector3, type BufferGeometry } from 'three';
 import { MeshBuilder, type Paint } from '../gfx/builder';
 import { rgb } from '../gfx/color';
-import { TRAM_DOORS, TRAM_FLOOR, TRAM_JOINT, TRAM_ROOF, TRAM_SECTION_ENDS, TRAM_WIDTH, TRAM_WIRE } from '../layout';
+import { TRAM_BODY, TRAM_DOORS, TRAM_FLOOR, TRAM_JOINT, TRAM_ROOF, TRAM_SECTION_ENDS, TRAM_WIDTH, TRAM_WIRE } from '../layout';
 
 /**
  * A colour shaded by the way its face turns, as the city's baked light has it: full on a roof, a little less on a side,
@@ -33,21 +33,10 @@ const DOOR_GLASS = shaded(0x2a3742);
 /** Glass and lamps are white in the geometry: their materials give the colour (dark by day, lit at night). */
 const GLASS = rgb(0xffffff);
 
-/** Half the car's width, and the heights of its bands: the skirt's foot, the window sill and head, the eave, the roof. */
+/** Half the car's width, and its body's heights and shape (`TRAM_BODY`). */
 const HW = TRAM_WIDTH / 2;
-const FOOT = 0.3;
-const SILL = 1.1;
-const HEAD = 2.35;
-const EAVE = 2.85;
-const ROOF = 3.12;
-/** How far in the roof's edge is rounded off, and how long the cab's nose is. */
-const CHAMFER = 0.22;
-const NOSE = 1.1;
-/** The window panes between the doors: at most this wide, with a black post between. */
-const PANE = 1.6;
-const POST = 0.12;
-/** A door leaf's thickness, and how far its frame shows round the glass. */
-const LEAF_T = 0.05;
+const { foot: FOOT, sill: SILL, head: HEAD, eave: EAVE, roof: ROOF, chamfer: CHAMFER, nose: NOSE, pane: PANE, post: POST } = TRAM_BODY;
+const LEAF_T = TRAM_DOORS.leaf;
 
 /** A section's half length, its `k`th of `TRAM_SECTION_ENDS`: its span less the gap at each articulation. */
 export const sectionHalf = (k: number) => (TRAM_SECTION_ENDS[k + 1] - TRAM_SECTION_ENDS[k] - TRAM_JOINT) / 2;
@@ -265,6 +254,3 @@ export function tramModel(): TramModel {
   };
   return model;
 }
-
-/** Heights the rest of the city needs: where a section's floor and sill lie, for doors and people. */
-export const TRAM_HEIGHTS = { foot: FOOT, sill: SILL, head: HEAD, eave: EAVE, roof: ROOF } as const;

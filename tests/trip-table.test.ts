@@ -72,6 +72,13 @@ describe('the trams at a moment', () => {
       expect(clear(stockholmEpoch(y, m, d, 4, 0), stockholmEpoch(y, m, d + 1, 3, 0))).toEqual([]);
     }, 120_000);
   }
+
+  // The nights the clocks change, when a service day is 23 or 25 hours long: Saturday's last trams into Sunday's first.
+  for (const [what, y, m, d] of [['summer time begins', 2027, 3, 28], ['summer time ends', 2026, 10, 25]] as const) {
+    test(`never overlap one another the night ${what}`, () => {
+      expect(clear(stockholmEpoch(y, m, d - 1, 22, 0), stockholmEpoch(y, m, d, 9, 0))).toEqual([]);
+    }, 120_000);
+  }
 });
 
 /** Where trams overlap between two moments, a second apart (at most ten). */

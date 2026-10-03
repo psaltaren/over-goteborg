@@ -2,6 +2,11 @@ import { describe, expect, test } from 'bun:test';
 import { readdirSync, readFileSync } from 'node:fs';
 import { CITY, cityTiles, PLACES, TILE, type Pt } from '../src/game/city/geo';
 import { quayWalls, unpack, type TileFile } from '../src/game/city/tiles';
+import { CLEAR } from '../src/game/city/aside';
+import trackFile from '../src/game/city/osm/tracks.json';
+import { readLinks, type TrackFile } from '../src/game/city/trackData';
+import { TrackIndex } from '../src/game/city/trackIndex';
+import { TRAM_WIDTH } from '../src/game/layout';
 import { withoutSigns } from '../src/game/gfx/signs';
 import { Physics } from '../src/game/physics';
 import { Section } from '../src/game/world/section';
@@ -71,8 +76,11 @@ describe('the city\'s squares', () => {
     expect(length(quayWalls({ areas: [canal], roads: [over, next] }))).toBeCloseTo(100 - 2 * 24, 3);
   });
 
-  test('name only places on land', () => {
+  test('name only places on land, clear of the trams', () => {
     for (const [name, at] of Object.entries(PLACES)) expect(`${name} ${inWater(at) ? 'in the water' : 'on land'}`).toBe(`${name} on land`);
+    // Out of every tram's way: someone put there (the start, a respawn, the gate's scenes) is not pushed aside at once.
+    const tracks = new TrackIndex(readLinks(trackFile as unknown as TrackFile));
+    for (const [name, [x, z]] of Object.entries(PLACES)) expect(`${name} ${tracks.distance(x, z) >= TRAM_WIDTH / 2 + CLEAR ? 'clear' : `${tracks.distance(x, z).toFixed(2)} m from a track`}`).toBe(`${name} clear`);
   });
 
   test('build without the square a station street has, with colliders for the walls', () => {

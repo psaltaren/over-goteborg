@@ -460,12 +460,31 @@ export const TRAM_JOINT = 0.35;
 /** A low-floor car's floor over the rail top, and the top of the equipment on its roof. */
 export const TRAM_FLOOR = 0.35;
 export const TRAM_ROOF = 3.4;
-/** Its doors, double, the same on both sides: where each's middle lies, meters from its section's front, and how wide and high. */
-export const TRAM_DOORS = { end: [3.3, 8.7], middle: [2.9, 8.0], width: 1.3, height: 2.0 } as const;
+/**
+ * The M34's body, over the rail top: its skirt's foot, its windows' sill and head, its eave and its roof; how far in
+ * the roof's edges are rounded, how long the cab's nose is, and the window panes between the doors (at most `pane`
+ * wide, a black `post` between).
+ */
+export const TRAM_BODY = { foot: 0.3, sill: 1.1, head: 2.35, eave: 2.85, roof: 3.12, chamfer: 0.22, nose: 1.1, pane: 1.6, post: 0.12 } as const;
+/**
+ * Its doors, double, the same on both sides: where each's middle lies, meters from its section's front, how wide and
+ * high, how far a leaf swings out before it slides aside (a plug door), and how thick a leaf is.
+ */
+export const TRAM_DOORS = { end: [3.3, 8.7], middle: [2.9, 8.0], width: 1.3, height: 2.0, plug: 0.07, leaf: 0.05 } as const;
 /** The contact wire over a track, above the rail top, that the pantograph reaches up to. */
 export const TRAM_WIRE = 5.8;
-/** The track: standard gauge between the rails' inner edges, and a grooved rail's head and the groove beside it. */
+/**
+ * The track: standard gauge between the rails' inner edges; a grooved rail's head and the groove beside it, and the
+ * height of the heads over the street (the road lies at -0.05, `streetOsm.ts`); the strip of setts the rails lie in,
+ * as far out either side of them and as high.
+ */
 export const TRAM_GAUGE = 1.435;
-export const TRAM_RAIL = { head: 0.07, groove: 0.04 } as const;
+export const TRAM_RAIL = { head: 0.07, groove: 0.04, y: -0.032, bed: 0.45, bedY: -0.042 } as const;
+/**
+ * The poles that hold the contact wire: one every this many meters along a track, none this near a junction, this far
+ * from the track's middle, this thick (half); and the wire as thick as it is drawn (thicker than it is, so it does not
+ * flicker out of sight).
+ */
+export const TRAM_POLES = { every: 36, keep: 10, out: TRAM_WIDTH / 2 + 1.25, half: 0.11, wire: 0.025 } as const;
 /** How quickly a tram speeds up and slows down in the street, in m/s². */
 export const TRAM_ACCEL = 1.0;

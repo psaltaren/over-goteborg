@@ -22,6 +22,7 @@ export class TramPath {
   private readonly xs: number[] = [];
   private readonly zs: number[] = [];
   private readonly at: number[] = [];
+  private readonly scratch: Pt = [0, 0];
   readonly length: number;
 
   constructor(run: Run, links: Link[]) {
@@ -61,12 +62,14 @@ export class TramPath {
     return lo;
   }
 
-  /** The point `s` meters along, the track's last segment carried on straight past either end. */
-  point(s: number): Pt {
+  /** The point `s` meters along, the track's last segment carried on straight past either end (into `out`, if given). */
+  point(s: number, out: Pt = [0, 0]): Pt {
     const i = this.segment(s);
     const a = this.at[i], b = this.at[i + 1];
     const t = b > a ? (s - a) / (b - a) : 0;
-    return [this.xs[i] + (this.xs[i + 1] - this.xs[i]) * t, this.zs[i] + (this.zs[i + 1] - this.zs[i]) * t];
+    out[0] = this.xs[i] + (this.xs[i + 1] - this.xs[i]) * t;
+    out[1] = this.zs[i] + (this.zs[i + 1] - this.zs[i]) * t;
+    return out;
   }
 
   /** The way the track runs at `s`: a unit vector. */
@@ -82,9 +85,12 @@ export class TramPath {
    * behind the front, its middle halfway between its two ends on the track and facing from the rear one to the front.
    */
   sections(s: number, ends: readonly number[], out: SectionPose[] = []): SectionPose[] {
-    let [fx, fz] = this.point(s - ends[0]);
+    const p = this.scratch;
+    this.point(s - ends[0], p);
+    let fx = p[0], fz = p[1];
     for (let k = 0; k + 1 < ends.length; k++) {
-      const [rx, rz] = this.point(s - ends[k + 1]);
+      this.point(s - ends[k + 1], p);
+      const rx = p[0], rz = p[1];
       const dx = fx - rx, dz = fz - rz;
       const len = Math.hypot(dx, dz) || 1;
       const pose = (out[k] ??= { x: 0, z: 0, dx: 1, dz: 0 });

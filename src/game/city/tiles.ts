@@ -209,7 +209,7 @@ export class Tiles {
     }
     yield;
     // The tram tracks: the rails in the street, the wire over them and its poles.
-    const poles = this.rails?.build(s, this.physics, rect, STREET_Y) ?? [];
+    const poles = this.rails ? yield* this.rails.buildSteps(s, this.physics, rect, STREET_Y) : [];
     yield;
     const group = yield* s.finishSteps();
     const windows: Mesh | null = built.windows;

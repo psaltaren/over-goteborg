@@ -23,10 +23,13 @@ function urls(): Record<string, string> {
   return URLS;
 }
 
+/** How long a file may take before the game gives up on it (offline, or a connection that stalls). */
+const TIMEOUT = 20_000;
+
 async function fetchJson<T>(name: string): Promise<T> {
   const url = urls()[name];
   if (!url) throw new Error(`No file for ${name}`);
-  const res = await fetch(url);
+  const res = await fetch(url, { signal: AbortSignal.timeout(TIMEOUT) });
   if (!res.ok) throw new Error(`${name}: ${res.status}`);
   return (await res.json()) as T;
 }
@@ -39,9 +42,15 @@ export interface TramData {
   ensure(epoch: number): Promise<void>;
 }
 
-/** The tracks, the runs and the timetables running at `epoch`. Throws if any cannot be fetched. */
-export async function loadTramData(epoch: number): Promise<TramData> {
-  const [tracks, runsFile] = await Promise.all([fetchJson<TrackFile>('tracks'), fetchJson<{ runs: Run[] }>('runs')]);
+/**
+ * The tracks, the runs and the timetables running at `epoch`. Throws if the tracks or the runs cannot be fetched. The
+ * tracks go to `onTracks` as soon as they are here (null if they cannot be), for the squares to lay their rails without
+ * waiting for the timetable.
+ */
+export async function loadTramData(epoch: number, onTracks?: (links: Link[] | null) => void): Promise<TramData> {
+  const tracksUp = fetchJson<TrackFile>('tracks').then(readLinks);
+  tracksUp.then((links) => onTracks?.(links), () => onTracks?.(null));
+  const [links, runsFile] = await Promise.all([tracksUp, fetchJson<{ runs: Run[] }>('runs')]);
   const table = new TripTable(runsFile.runs);
   const pending = new Map<Day, Promise<void>>();
   const ensure = async (at: number) => {
@@ -57,5 +66,5 @@ export async function loadTramData(epoch: number): Promise<TramData> {
     }));
   };
   await ensure(epoch);
-  return { links: readLinks(tracks), runs: runsFile.runs, table, ensure };
+  return { links, runs: runsFile.runs, table, ensure };
 }

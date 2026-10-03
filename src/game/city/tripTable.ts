@@ -8,8 +8,8 @@ import { serviceDays } from './serviceDay';
 
 /** A tram in the area at a moment. */
 export interface TramState {
-  /** Which tram: its service day and its trip's place in the day, the same for as long as it runs. */
-  id: string;
+  /** Which tram: its service day's start and its trip's place in the day (`start * 10000 + index`), the same for as long as it runs. */
+  id: number;
   run: number;
   /** Its front, in meters along its run. */
   s: number;
@@ -64,26 +64,29 @@ export class TripTable {
     return this.days.has(day);
   }
 
-  /** The trams in the area at `epoch` (seconds): every tram with some of its length on its run. */
+  /**
+   * The trams in the area at `epoch` (seconds): every tram with some of its length on its run. Into `out`, whose objects
+   * are filled afresh (the game asks every frame).
+   */
   at(epoch: number, out: TramState[] = []): TramState[] {
-    out.length = 0;
+    let n = 0;
     for (const sd of serviceDays(epoch)) {
       const index = this.days.get(sd.day);
       if (!index) continue;
       const t = epoch - sd.start;
       for (const i of index.buckets.get(Math.floor(t / BUCKET)) ?? []) {
-        const state = this.state(index.trips[i], t);
-        if (state) out.push({ ...state, id: `${sd.start}:${i}` });
+        if (this.state(index.trips[i], t, sd.start * 10_000 + i, (out[n] ??= {} as TramState))) n++;
       }
     }
+    out.length = n;
     return out;
   }
 
-  /** A trip's tram `t` seconds into its service day, or null when it is not in the area. */
-  private state(trip: Trip, t: number): Omit<TramState, 'id'> | null {
+  /** A trip's tram `t` seconds into its service day, into `into`; false when it is not in the area. */
+  private state(trip: Trip, t: number, id: number, into: TramState): boolean {
     const run = this.runs[trip.run];
     const s = runPosition(run, trip.times, t);
-    if (s === null || !covered(run, s)) return null;
+    if (s === null || !covered(run, s)) return false;
     const before = runPosition(run, trip.times, t - SPEED_STEP), after = runPosition(run, trip.times, t + SPEED_STEP);
     const speed = before !== null && after !== null ? (after - before) / (2 * SPEED_STEP) : 0;
     let stop = -1, next = -1;
@@ -104,6 +107,7 @@ export class TripTable {
       side = at.side;
     }
     const sign = signAt(run, s);
-    return { run: trip.run, s, speed, doors, side, line: sign.line, headsign: sign.headsign, stop, next };
+    Object.assign(into, { id, run: trip.run, s, speed, doors, side, line: sign.line, headsign: sign.headsign, stop, next });
+    return true;
   }
 }

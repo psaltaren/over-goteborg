@@ -3,6 +3,7 @@
 // Pure: the trams as rectangles in the plane, the tracks as segments, and a test for walls handed in. No three.js.
 
 import type { Pt } from './geo';
+import { segmentDistance } from './trackIndex';
 
 /** A tram's section in the plane: its middle, the way it faces (a unit vector), its half length and half width. */
 export interface Footprint {
@@ -22,14 +23,6 @@ export function inFootprint(f: Footprint, x: number, z: number, margin = 0, ahea
   return along > -f.hl - margin && along < f.hl + margin + ahead && Math.abs(across) < f.hw + margin;
 }
 
-/** How far a point lies from a segment. */
-function toSegment(x: number, z: number, [ax, az]: Pt, [bx, bz]: Pt): number {
-  const ex = bx - ax, ez = bz - az;
-  const len2 = ex * ex + ez * ez || 1;
-  const t = Math.max(0, Math.min(1, ((x - ax) * ex + (z - az) * ez) / len2));
-  return Math.hypot(ax + ex * t - x, az + ez * t - z);
-}
-
 /** How far out of the way to step: off a track's middle by more than half a tram and this. */
 export const CLEAR = 0.9;
 
@@ -40,7 +33,7 @@ export const CLEAR = 0.9;
  */
 export function stepAside(x: number, z: number, from: Footprint, trams: Footprint[], segments: Array<[Pt, Pt]>, hw: number, free: (x: number, z: number) => boolean): Pt | null {
   const ok = (px: number, pz: number) =>
-    segments.every(([a, b]) => toSegment(px, pz, a, b) >= hw + CLEAR) && trams.every((f) => !inFootprint(f, px, pz, CLEAR)) && free(px, pz);
+    segments.every(([a, b]) => segmentDistance(px, pz, a, b) >= hw + CLEAR) && trams.every((f) => !inFootprint(f, px, pz, CLEAR)) && free(px, pz);
   // Across the tram first, to the side the person stands on, then the other; further out a step at a time.
   const across = -(x - from.x) * from.dz + (z - from.z) * from.dx;
   const sides = across >= 0 ? [1, -1] : [-1, 1];

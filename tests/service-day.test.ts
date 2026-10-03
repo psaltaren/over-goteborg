@@ -45,5 +45,8 @@ describe('the timetable a day runs', () => {
     expect(today.day).toBe('weekday');
     expect(at - yesterday.start).toBeCloseTo(86_400 + 1800, 0);
     expect(at - today.start).toBeCloseTo(1800, 0);
+    // The night the clocks go forward, yesterday's night still counts from 24 h before today's start.
+    const [sat, sun] = serviceDays(stockholmEpoch(2027, 3, 28, 4, 0));
+    expect(sun.start - sat.start).toBe(86_400);
   });
 });

@@ -348,9 +348,16 @@ function stopAt(id: string, s: number, off: number, side: 1 | -1): RunStop {
   return { stop: id, name: st.name, platform: st.platform, s: round2(s), off: round2(off), side };
 }
 
-/** Which side of a run's track (`line`, a point a meter) a platform at `p` lies on, `s` meters along: right unless it is clearly left. */
+/** Which side of a run's track (`line`) a platform at `p` lies on, `s` meters along it: right unless it is clearly left. */
 function sideOf(line: Pt[], s: number, p: Pt): 1 | -1 {
-  const i = Math.max(0, Math.min(line.length - 2, Math.floor(s)));
+  // The segment that holds `s`, measured along the line (its points are not a meter apart everywhere: a piece's last
+  // step is shorter, and a junction's point comes twice).
+  let i = 0;
+  for (let along = 0; i + 2 < line.length; i++) {
+    const len = Math.hypot(line[i + 1][0] - line[i][0], line[i + 1][1] - line[i][1]);
+    if (along + len >= s && len > 0) break;
+    along += len;
+  }
   const [ax, az] = line[i], [bx, bz] = line[i + 1];
   // Right of the way (dx, dz) is (-dz, dx): z is to the right looking along +x.
   const right = (p[0] - ax) * -(bz - az) + (p[1] - az) * (bx - ax);
@@ -573,14 +580,22 @@ for (const day of DAYS) {
     }
   }
   const out: Trip[] = [];
-  for (const first of list) {
-    if (taken.has(first)) continue;
+  // Each tram's trips in order, from one no other leads to. A join that fails on the trips joined so far (where the
+  // rounding of the longer run comes out the other way than the pair's did) ends that tram there, and the trip it
+  // would have joined starts a tram of its own.
+  const firsts = list.filter((t) => !taken.has(t));
+  for (let q = 0; q < firsts.length; q++) {
+    const first = firsts[q];
     let run = runs[first.run];
     let times = [...first.times];
     let id = first.run;
     for (let cur = first; next.has(cur); ) {
       const b = next.get(cur)!;
-      const j = joinOf(id, b.run) ?? joinRuns(run, runs[b.run])!;
+      const j = joinOf(id, b.run);
+      if (!j) {
+        firsts.push(b);
+        break;
+      }
       const leaves = times[times.length - 1];
       if (j.merged) times = [...times.slice(0, -1), b.times[1], ...b.times.slice(2)];
       else times = [...times, leaves + emptyTime(j.at - run.stops[run.stops.length - 1].s), ...b.times.slice(1)];

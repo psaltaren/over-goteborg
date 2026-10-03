@@ -68,12 +68,18 @@ export interface ServiceDay {
   start: number;
 }
 
-/** The service days whose trams may run at `epoch`: yesterday's (its night, past 24 h) and today's. */
+/**
+ * The service days whose trams may run at `epoch`: yesterday's (its night, past 24 h) and today's. Yesterday's counts
+ * from exactly 24 h before today's, as the block pass that keeps the night's trams clear of the morning's has it
+ * (`scripts/gbg-gtfs.ts`): on the nights the clocks change the day is 23 or 25 h long, and the night's last trams run
+ * an hour off the wall clock rather than through the morning's first.
+ */
 export function serviceDays(epoch: number): [ServiceDay, ServiceDay] {
   const c = stockholm(epoch);
   const [y, m, d] = shift(c.year, c.month, c.day, -1);
+  const today = serviceStart(c.year, c.month, c.day);
   return [
-    { day: dayType(y, m, d), start: serviceStart(y, m, d) },
-    { day: dayType(c.year, c.month, c.day), start: serviceStart(c.year, c.month, c.day) },
+    { day: dayType(y, m, d), start: today - 86_400 },
+    { day: dayType(c.year, c.month, c.day), start: today },
   ];
 }

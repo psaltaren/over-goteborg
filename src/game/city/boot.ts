@@ -132,12 +132,11 @@ export async function startGame(root: HTMLElement, options: GameOptions = {}): P
   const world = new CityWorld(physics, windowLight);
   scene.add(world.group);
   // The trams' tracks and timetable, fetched alongside the rest; offline, the city opens without them.
-  const tramsUp = loadTramData(time).catch((err) => {
+  // The squares lay the tracks in their streets, and wait for them (not for the timetable).
+  const tramsUp = loadTramData(time, (links) => world.tiles.setTracks(links)).catch((err) => {
     console.warn('No trams:', err);
     return null;
   });
-  // The squares lay the tracks in their streets, and wait for them.
-  void tramsUp.then((data) => world.tiles.setTracks(data?.links ?? null));
   const sky = new Sky();
   scene.add(sky.mesh);
   await setProgress(0.1);
@@ -415,11 +414,15 @@ export async function startGame(root: HTMLElement, options: GameOptions = {}): P
   }
 
   /** The nearest tram, heard: its rumble and whine by how near and fast it is, and its brakes squealing as it slows. */
-  let heard: { id: string; speed: number } | null = null;
+  let heard: { id: number; speed: number } | null = null;
   function tramSound(dt: number): void {
     const near = trams!.nearest();
     if (!near || near.distance > 120) {
-      audio.setStreetNoise(0, 0);
+      if (heard) {
+        // Quiet, the brakes too (they would squeal on at the last tram's pitch).
+        audio.setStreetNoise(0, 0);
+        audio.updateJourney({ trainId: null, distance: 0, speed: 0, braking: 0, loudness: 0, aboard: false });
+      }
       heard = null;
       return;
     }

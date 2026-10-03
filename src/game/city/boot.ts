@@ -11,7 +11,7 @@ import { comeBack, savedPlace, savePlace } from '../../place';
 import { Color, Fog, HemisphereLight, PerspectiveCamera, Scene, Vector3, WebGLRenderer, WebGLRenderTarget, type Object3D } from 'three';
 import { Audio } from '../audio';
 import { formatClock, stockholm, stockholmEpoch } from '../clock';
-import { crashFacts, FEEDBACK_MAIL, reportError, watchErrors } from '../crash';
+import { crashFacts, reportError, watchErrors } from '../crash';
 import { Footsteps } from '../footsteps';
 import { nextFrame } from '../frames';
 import { Gamepads } from '../gamepad';
@@ -193,6 +193,12 @@ export async function startGame(root: HTMLElement, options: GameOptions = {}): P
   for (const el of root.querySelectorAll<HTMLElement>('.hud-map, .pause-modes')) el.hidden = true;
   hud.setLine('Göteborg');
   root.querySelector('.hud')?.classList.add('is-city');
+  // The help with the city's keys, and on a phone without seats to sit on.
+  root.querySelector('.pause-touch-help')?.setAttribute('data-t', 'touch.helpCity');
+  hud.city = true;
+  hud.relabel();
+  // The metro's feedback address and its maker's tip jar are Joel's: none here until the city has its own.
+  for (const a of root.querySelectorAll<HTMLAnchorElement>('a.pause-support')) a.hidden = true;
   const audio = new Audio();
   const footsteps = new Footsteps();
   // The sway of a tram ridden, unless the system or the player asks for less motion (as on the metro).
@@ -367,6 +373,8 @@ export async function startGame(root: HTMLElement, options: GameOptions = {}): P
     throttle: nothing, doors: nothing,
     pause, map: nothing, activateAudio: () => audio.start(),
   });
+  // No map of the network in the city yet.
+  root.querySelector<HTMLElement>('.touch-toolbar [data-action="map"]')?.setAttribute('hidden', '');
   setPaused(!debug);
 
   // Keys go through the player's bindings (`settings.ts`); Escape always pauses and the arrows always walk.
@@ -801,10 +809,8 @@ export async function startGame(root: HTMLElement, options: GameOptions = {}): P
     const home = card.querySelector<HTMLAnchorElement>('.crash-home')!;
     home.textContent = text.crash.home;
     home.href = location.pathname;
-    const mail = card.querySelector<HTMLAnchorElement>('.crash-mail')!;
-    mail.textContent = text.crash.mail;
-    const message = err instanceof Error ? `${err.name}: ${err.message}` : String(err);
-    mail.href = `mailto:${FEEDBACK_MAIL}?subject=${encodeURIComponent(text.crash.subject)}&body=${encodeURIComponent(`${text.crash.body}\n\n\n---\n${message.slice(0, 300)}`)}`;
+    // The error is reported already (`reportError`); the metro's address to mail it to is Joel's, so none is offered.
+    card.querySelector<HTMLAnchorElement>('.crash-mail')!.hidden = true;
     root.appendChild(card);
     reload.focus();
   };

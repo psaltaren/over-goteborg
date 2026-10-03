@@ -61,6 +61,7 @@
     "sound": "Ljud",
     "pixels": "Pixelläge",
     "help": "Styr med vänster tumspak. Dra över vyn för att titta runt. Använd knapparna för att springa, hoppa och sätta dig. Du kan gå och titta samtidigt.",
+    "helpCity": "Styr med vänster tumspak. Dra över vyn för att titta runt. Använd knapparna för att springa och hoppa. Du kan gå och titta samtidigt.",
     "seatHint": "Tryck på Sitt för att sätta dig.",
     "standHint": "Tryck på Res dig för att stå upp.",
     "seated": "Du sitter ner. Tryck på Res dig för att stå upp.",

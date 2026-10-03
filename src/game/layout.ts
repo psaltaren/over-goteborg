@@ -438,16 +438,30 @@ export const CANOPY = {
 
 // ---- Gothenburg's trams in the street (src/game/city). ----
 
-/** A tram car's width, the M32's and the M33's: two tracks closer than this, centre to centre, cannot both hold a tram. */
+/** A tram car's width, the M32's, the M33's and the M34's: two tracks closer than this, centre to centre, cannot both hold a tram. */
 export const TRAM_WIDTH = 2.65;
 /** The narrowest curve a tram takes, the M32's, which the other cars manage too. */
 export const TRAM_MIN_RADIUS = 18;
 /** Double track, centre to centre, as Gothenburg's streets have it. */
 export const TRAM_TRACK_SPACING = 3.2;
 /**
- * How long a tram is, for keeping trams apart: the M33 (Flexity), the longest single car; two coupled M31s are longer
- * still, but which car runs a trip the timetable does not say.
+ * How long a tram is, for keeping trams apart and for drawing it: the M34 (Alstom's Flexity, "Superspårvagnen", in
+ * service since 2025), the longest car; two coupled M31s are longer still, but which car runs a trip the timetable does
+ * not say. (The M33 is the same car in three sections, 33 m.)
  */
 export const TRAM_LENGTH = 45;
+/**
+ * The M34's four sections, front to rear: meters behind the front where each ends, at the articulations. Two end
+ * sections with a cab, two between; the car runs both ways, a cab at each end.
+ */
+export const TRAM_SECTION_ENDS = [0, 11.6, 22.5, 33.4, 45] as const;
+/** The gap between two sections that the bellows close. */
+export const TRAM_JOINT = 0.35;
+/** A low-floor car's floor over the rail top, its roof's top, and the pantograph's at rest over the roof. */
+export const TRAM_FLOOR = 0.35;
+export const TRAM_ROOF = 3.4;
+export const TRAM_PANTOGRAPH = 0.55;
+/** Its doors, double, the same on both sides: where each's middle lies, meters from its section's front, and how wide and high. */
+export const TRAM_DOORS = { end: [3.3, 8.7], middle: [2.9, 8.0], width: 1.3, height: 2.05 } as const;
 /** How quickly a tram speeds up and slows down in the street, in m/s². */
 export const TRAM_ACCEL = 1.0;

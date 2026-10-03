@@ -30,7 +30,11 @@ import { Warnings } from '../warnings';
 import { daylight, OpenAirWeather, Weather } from '../weather';
 import { setDaylight } from '../world/section';
 import { Sky } from '../world/sky';
+import { TRAM_WIDTH } from '../layout';
+import { stepAside } from './aside';
 import { PLACES, placeNear, PLAY, STREET_Y, yawToward, type Pt } from './geo';
+import { loadTramData } from './tramData';
+import { Trams } from './trams';
 import { BUILD_REACH, CityWorld } from './world';
 
 /** Seconds the build screen stays up at least, so its text can be read. */
@@ -127,6 +131,11 @@ export async function startGame(root: HTMLElement, options: GameOptions = {}): P
   const windowLight = () => Math.min(1, (1 - daylight(time)) * 1.4);
   const world = new CityWorld(physics, windowLight);
   scene.add(world.group);
+  // The trams' tracks and timetable, fetched alongside the rest; offline, the city opens without them.
+  const tramsUp = loadTramData(time).catch((err) => {
+    console.warn('No trams:', err);
+    return null;
+  });
   const sky = new Sky();
   scene.add(sky.mesh);
   await setProgress(0.1);
@@ -181,6 +190,9 @@ export async function startGame(root: HTMLElement, options: GameOptions = {}): P
   root.querySelector('.hud')?.classList.add('is-city');
   const audio = new Audio();
   const footsteps = new Footsteps();
+  const tramData = await tramsUp;
+  const trams = tramData ? new Trams(physics, tramData.table, tramData.runs, tramData.links) : null;
+  if (trams) scene.add(trams.group);
   let listening = debug;
 
   // Where the player starts: where they last stood, if that was in the city, else on Drottningtorget.
@@ -380,6 +392,43 @@ export async function startGame(root: HTMLElement, options: GameOptions = {}): P
       .then(() => (respawning = false));
   }
 
+  /** When a tram last rang at the player (performance.now), so a tram coming on rings once, not every frame. */
+  let rang = -Infinity;
+  /**
+   * A tram about to run into the player: it rings, and they step aside to the nearest spot clear of the tracks and the
+   * trams (`aside.ts`), else go to the nearest named place. Trams keep their timetable and cannot stop.
+   */
+  function outOfTheWay(): void {
+    const hit = trams!.inTheWay(player.feet.x, player.feet.z);
+    if (!hit || respawning || player.feet.y > STREET_Y + 1.5) return;
+    if (performance.now() - rang > 3000) {
+      rang = performance.now();
+      audio.bell();
+      hud.say(text.tram.aside, 4);
+    }
+    const to = stepAside(player.feet.x, player.feet.z, hit.section, trams!.obstacles(), trams!.tracksNear(player.feet.x, player.feet.z, 30), TRAM_WIDTH / 2,
+      (x, z) => physics.free(x, STREET_Y, z, player.collider));
+    if (to) player.teleport(new Vector3(to[0], STREET_Y + 0.05, to[1]));
+    else respawn(text.tram.aside);
+  }
+
+  /** The nearest tram, heard: its rumble and whine by how near and fast it is, and its brakes squealing as it slows. */
+  let heard: { id: string; speed: number } | null = null;
+  function tramSound(dt: number): void {
+    const near = trams!.nearest();
+    if (!near || near.distance > 120) {
+      audio.setStreetNoise(0, 0);
+      heard = null;
+      return;
+    }
+    const v = Math.min(1, near.speed / 16);
+    const loudness = Math.min(1, (0.12 + 0.88 * v) / (1 + near.distance / 10));
+    audio.setStreetNoise(loudness, v);
+    const braking = heard?.id === near.id && dt > 0 ? (heard.speed - near.speed) / dt : 0;
+    audio.updateJourney({ trainId: null, distance: 0, speed: near.speed, braking, loudness, aboard: false });
+    heard = { id: near.id, speed: near.speed };
+  }
+
   let last = performance.now();
   let secondTimer = 0;
   /** The anonymous performance report, once the game is up (`telemetry.ts`). */
@@ -434,6 +483,11 @@ export async function startGame(root: HTMLElement, options: GameOptions = {}): P
       else time += Math.max(-0.05 * dt, Math.min(0.05 * dt, error));
     }
 
+    if (trams) {
+      trams.update(time, player.feet.x, player.feet.z, sky.daylight);
+      outOfTheWay();
+      lap('trams');
+    }
     physics.step(dt);
     lap('physics');
     player.update(dt);
@@ -461,6 +515,7 @@ export async function startGame(root: HTMLElement, options: GameOptions = {}): P
     hemisphere.intensity = 2.4 * (1 + Math.max(0, sky.daylight - 0.4));
     openWeather.update(dt, time, weather.state, player.camera.position, 1, STREET_Y);
     lap('sky');
+    if (trams) tramSound(dt);
     if (player.stepped > 0) footsteps.update(player.stepped, player.running, 'stone', out);
     else footsteps.rest();
     secondTimer -= dt;
@@ -468,6 +523,8 @@ export async function startGame(root: HTMLElement, options: GameOptions = {}): P
       secondTimer = 1;
       hud.setClock(formatClock(time));
       if (++placeTimer % 5 === 0) rememberPlace();
+      // The next service day's timetable, fetched a couple of minutes before it starts.
+      if (placeTimer % 60 === 0) void tramData?.ensure(time + 120);
     }
     lap('hud');
     renderer.render(scene, player.camera);
@@ -495,8 +552,11 @@ export async function startGame(root: HTMLElement, options: GameOptions = {}): P
       weather,
       warnings,
       renderer,
-      /** No trams yet: the measuring scripts walk the trains they are given. */
+      /** No trams to ride yet (P4): the measuring scripts walk the trains they are given. */
       services: [] as unknown[],
+      /** The trams drawn this frame, nearest first, and every tram in the area. */
+      trams,
+      tramStates: () => trams?.states ?? [],
       get time() {
         return time;
       },

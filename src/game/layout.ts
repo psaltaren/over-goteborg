@@ -457,11 +457,15 @@ export const TRAM_LENGTH = 45;
 export const TRAM_SECTION_ENDS = [0, 11.6, 22.5, 33.4, 45] as const;
 /** The gap between two sections that the bellows close. */
 export const TRAM_JOINT = 0.35;
-/** A low-floor car's floor over the rail top, its roof's top, and the pantograph's at rest over the roof. */
+/** A low-floor car's floor over the rail top, and the top of the equipment on its roof. */
 export const TRAM_FLOOR = 0.35;
 export const TRAM_ROOF = 3.4;
-export const TRAM_PANTOGRAPH = 0.55;
 /** Its doors, double, the same on both sides: where each's middle lies, meters from its section's front, and how wide and high. */
-export const TRAM_DOORS = { end: [3.3, 8.7], middle: [2.9, 8.0], width: 1.3, height: 2.05 } as const;
+export const TRAM_DOORS = { end: [3.3, 8.7], middle: [2.9, 8.0], width: 1.3, height: 2.0 } as const;
+/** The contact wire over a track, above the rail top, that the pantograph reaches up to. */
+export const TRAM_WIRE = 5.8;
+/** The track: standard gauge between the rails' inner edges, and a grooved rail's head and the groove beside it. */
+export const TRAM_GAUGE = 1.435;
+export const TRAM_RAIL = { head: 0.07, groove: 0.04 } as const;
 /** How quickly a tram speeds up and slows down in the street, in m/s². */
 export const TRAM_ACCEL = 1.0;

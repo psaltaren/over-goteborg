@@ -55,6 +55,7 @@ export class Audio {
   private readonly recordedLoads = new Map<RecordedAnnouncement, Promise<AudioBuffer | null>>();
   private readonly clipLoads = new Map<string, Promise<AudioBuffer | null>>();
   private doorBuffer: AudioBuffer | null = null;
+  private bellBuffer: AudioBuffer | null = null;
   private warningBuffer: AudioBuffer | null = null;
   private warningLoad: Promise<AudioBuffer | null> | null = null;
 
@@ -312,6 +313,33 @@ export class Audio {
     this.whineGain.gain.setTargetAtTime(speed > 0.02 ? loudness * (0.012 + speed * 0.02) : 0, t, 0.2);
   }
 
+  /**
+   * A tram in the street, the nearest: its rumble and whine as loud as `loudness` (none when no tram is near) and as
+   * high as its `speed` (0 to 1 of a tram's top speed). No floor under it, as the tunnels have: the street is quiet
+   * between trams.
+   */
+  setStreetNoise(loudness: number, speed: number): void {
+    if (!this.ctx) return;
+    const t = this.ctx.currentTime;
+    this.rumbleGain.gain.setTargetAtTime(loudness * 0.38, t, 0.2);
+    this.rumbleFilter.frequency.setTargetAtTime(110 + speed * 520, t, 0.2);
+    this.whine.frequency.setTargetAtTime(90 + speed * 700, t, 0.2);
+    this.whineGain.gain.setTargetAtTime(speed > 0.02 ? loudness * (0.008 + speed * 0.016) : 0, t, 0.2);
+  }
+
+  /** A tram's bell: the two quick strikes a driver gives someone in the track. */
+  bell(volume = 1): void {
+    if (!this.ctx || this.muted) return;
+    this.bellBuffer ??= synthBell(this.ctx);
+    const source = this.ctx.createBufferSource();
+    source.buffer = this.bellBuffer;
+    const gain = this.ctx.createGain();
+    gain.gain.value = volume * 0.8;
+    source.connect(gain).connect(this.trains);
+    source.onended = () => { source.disconnect(); gain.disconnect(); };
+    source.start();
+  }
+
   /** Distance-driven wheel joints stay tied to actual train motion. */
   updateJourney(sound: JourneySound): void {
     if (!this.ctx) return;
@@ -507,6 +535,29 @@ export function synthChime(ctx: BaseAudioContext): AudioBuffer {
       v += env * (Math.sin(2 * Math.PI * n.f * u) + 0.25 * Math.sin(4 * Math.PI * n.f * u));
     }
     data[i] = v * 0.28;
+  }
+  return buffer;
+}
+
+/**
+ * A tram's bell, struck twice: a bright metal note with the inharmonic partials of a bell (1, 2.76 and 5.4 times the
+ * note) that rings out quickly, as the street trams' bells do.
+ */
+export function synthBell(ctx: BaseAudioContext): AudioBuffer {
+  const rate = ctx.sampleRate;
+  const buffer = ctx.createBuffer(1, Math.ceil(rate * 1.1), rate);
+  const data = buffer.getChannelData(0);
+  const f = 1180;
+  for (let i = 0; i < data.length; i++) {
+    const t = i / rate;
+    let v = 0;
+    for (const at of [0, 0.19]) {
+      const u = t - at;
+      if (u < 0) continue;
+      const env = Math.min(1, u / 0.003) * Math.exp(-u * 7);
+      v += env * (Math.sin(2 * Math.PI * f * u) + 0.5 * Math.sin(2 * Math.PI * f * 2.76 * u) * Math.exp(-u * 6) + 0.25 * Math.sin(2 * Math.PI * f * 5.4 * u) * Math.exp(-u * 12));
+    }
+    data[i] = v * 0.22;
   }
   return buffer;
 }

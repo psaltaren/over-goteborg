@@ -35,7 +35,8 @@ export class Player {
   private padForward = 0;
   private padSide = 0;
   private padRunning = false;
-  private readonly collider: RAPIER.Collider;
+  /** The capsule that stands for the player in the physics world (left out of tests for room, `Physics.free`). */
+  readonly collider: RAPIER.Collider;
   private readonly controller: RAPIER.KinematicCharacterController;
   private bob = 0;
   seated = false;

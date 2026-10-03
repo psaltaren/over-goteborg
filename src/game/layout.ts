@@ -444,3 +444,10 @@ export const TRAM_WIDTH = 2.65;
 export const TRAM_MIN_RADIUS = 18;
 /** Double track, centre to centre, as Gothenburg's streets have it. */
 export const TRAM_TRACK_SPACING = 3.2;
+/**
+ * How long a tram is, for keeping trams apart: the M33 (Flexity), the longest single car; two coupled M31s are longer
+ * still, but which car runs a trip the timetable does not say.
+ */
+export const TRAM_LENGTH = 45;
+/** How quickly a tram speeds up and slows down in the street, in m/s². */
+export const TRAM_ACCEL = 1.0;

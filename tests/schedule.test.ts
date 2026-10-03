@@ -1,0 +1,101 @@
+import { describe, expect, test } from 'bun:test';
+import schedule from '../src/game/city/osm/schedule.json';
+import tracks from '../src/game/city/osm/tracks.json';
+import { blocksIn, covered, DAYS, runBlocks, runPieces, runPosition, type ScheduleFile } from '../src/game/city/schedule';
+import { readLinks, type TrackFile } from '../src/game/city/trackData';
+
+const file = schedule as unknown as ScheduleFile;
+const track = tracks as unknown as TrackFile;
+const links = readLinks(track);
+
+describe('the trams\' day', () => {
+  test('has a weekday, a Saturday and a Sunday from one feed, with the city\'s lines', () => {
+    expect(new Set(Object.values(file.dates)).size).toBe(3);
+    expect(file[DAYS[0]].length).toBeGreaterThan(1500);
+    for (const day of DAYS) expect(file[day].length).toBeGreaterThan(1000);
+    const lines = new Set(file.runs.map((r) => r.line));
+    for (const line of ['1', '2', '3', '4', '5', '6', '7', '9', '10', '11', '12']) expect(lines.has(line)).toBe(true);
+    expect(file.license).toContain('CC0');
+  });
+
+  test('runs along track that joins up, one link to the next', () => {
+    for (const r of file.runs) {
+      for (let k = 1; k < r.links.length; k++) expect(links[r.links[k - 1]].next).toContain(r.links[k]);
+      expect(r.from).toBeGreaterThanOrEqual(0);
+      expect(r.to).toBeLessThanOrEqual(links[r.links[r.links.length - 1]].length + 0.01);
+      const pieces = runPieces(r, links);
+      const length = pieces.reduce((sum, p) => sum + p.s1 - p.s0, 0);
+      expect(Math.abs(length - r.length)).toBeLessThan(0.5);
+    }
+  });
+
+  test('has its stops in order, and those in the area beside the track', () => {
+    // A stop is where Västtrafik puts its platform, beside the track: most within 3 m (88% of the runs' stops in October
+    // 2026), some at island platforms up to 5 m off (Brunnsparken, Drottningtorget), and Hagakyrkan's A side 8 m.
+    // Further, and a run is taken for a bad match and left out (scripts/gbg-gtfs.ts, STOP_OFF).
+    const offs: number[] = [];
+    for (const r of file.runs) {
+      for (let k = 1; k < r.stops.length; k++) expect(r.stops[k].s).toBeGreaterThan(r.stops[k - 1].s);
+      for (const s of r.stops) if (s.s >= 0 && s.s <= r.length) offs.push(s.off);
+    }
+    expect(Math.max(...offs)).toBeLessThanOrEqual(8);
+    expect(offs.filter((d) => d <= 3).length / offs.length).toBeGreaterThanOrEqual(0.85);
+  });
+
+  test('has times that run forward', () => {
+    for (const day of DAYS) {
+      for (const trip of file[day]) {
+        expect(trip.times.length).toBe(2 * file.runs[trip.run].stops.length);
+        for (let i = 1; i < trip.times.length; i++) expect(trip.times[i]).toBeGreaterThanOrEqual(trip.times[i - 1]);
+      }
+    }
+  });
+
+  test('holds trams a little, not long: the queues at the busy stops', () => {
+    for (const day of DAYS) {
+      const held = file[day].map((t) => t.held ?? 0).sort((a, b) => a - b);
+      expect(held[Math.floor(held.length / 2)]).toBeLessThanOrEqual(30);
+      expect(held[held.length - 1]).toBeLessThanOrEqual(600);
+    }
+  });
+
+  const along = file.runs.map((r) => runBlocks(r, links, track.blocks));
+  const conflicts = new Map<number, number[]>();
+  for (const [a, b] of track.conflicts) {
+    conflicts.set(a, [...(conflicts.get(a) ?? []), b]);
+    conflicts.set(b, [...(conflicts.get(b) ?? []), a]);
+  }
+  for (const day of DAYS) {
+    test(`keeps every tram clear of every other, every second of a ${day}`, () => {
+      const trips = [...file[day]].sort((a, b) => a.times[0] - b.times[0]);
+      const t0 = trips[0].times[0], t1 = Math.max(...trips.map((t) => t.times[t.times.length - 1]));
+      const clashes: string[] = [];
+      let next = 0;
+      let active: number[] = [];
+      for (let t = t0; t <= t1 && clashes.length < 5; t++) {
+        while (next < trips.length && trips[next].times[0] <= t) active.push(next++);
+        active = active.filter((i) => trips[i].times[trips[i].times.length - 1] >= t);
+        const in_ = new Map<number, number>();
+        for (const i of active) {
+          const r = file.runs[trips[i].run];
+          const s = runPosition(r, trips[i].times, t);
+          if (s === null) continue;
+          const c = covered(r, s);
+          if (!c) continue;
+          for (const b of blocksIn(along[trips[i].run], c[0], c[1])) {
+            const other = in_.get(b);
+            if (other !== undefined && other !== i) clashes.push(`${t} s: block ${b} holds two trams`);
+            in_.set(b, i);
+          }
+        }
+        for (const [b, i] of in_) {
+          for (const c of conflicts.get(b) ?? []) {
+            const other = in_.get(c);
+            if (other !== undefined && other !== i) clashes.push(`${t} s: blocks ${b} and ${c} conflict and both hold a tram`);
+          }
+        }
+      }
+      expect(clashes).toEqual([]);
+    }, 60_000);
+  }
+});

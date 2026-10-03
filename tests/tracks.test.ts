@@ -46,8 +46,10 @@ describe('the tram tracks', () => {
   });
 
   test('neither end nor begin where the player can go: a tram can always go on', () => {
+    // A track run both ways may end in the area: a terminal track, where a tram (with a cab at each end) turns back on
+    // its twin, as at Nils Ericsonsplatsen.
     const into = new Set(links.flatMap((l) => l.next));
-    const stuck = links.filter((l) => (!l.next.length && inPlay(l.pts[l.pts.length - 1])) || (!into.has(l.id) && inPlay(l.pts[0])));
+    const stuck = links.filter((l) => l.twin === null && ((!l.next.length && inPlay(l.pts[l.pts.length - 1])) || (!into.has(l.id) && inPlay(l.pts[0]))));
     expect(stuck.map((l) => l.id)).toEqual([]);
   });
 

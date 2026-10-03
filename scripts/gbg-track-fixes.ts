@@ -18,21 +18,14 @@ export interface TrackFixes {
 }
 
 export const FIXES: TrackFixes = {
-  drop: [
-    // Nils Ericsonsplatsen: a diagonal from the turning loop across both tracks north of the stop, drawn without a
-    // direction, meeting the tracks at about 45 degrees and crossing between them in 6 m (a crossover between tracks
-    // 3.2 m apart needs about 15 m at 18 m radius). No tram could take it as drawn. Seen as the one link the easing could
-    // not bring to 18 m, and as dead ends either side of it (October 2026). Back in, redrawn, if a line needs it.
-    207339529,
-  ],
+  drop: [],
   direction: {
-    // Lilla Bommen to Nils Ericsonsplatsen, the eastern track: one track run south, drawn as oneway ways with these
-    // stretches between them untagged, so they read as run both ways and the northbound half dead-ended at both ends.
-    1087521825: 1,
-    1291064386: 1,
-    1291064385: 1,
-    1291064384: 1,
-    1291064383: 1,
+    // Nils Ericsonsplatsen, the eastern track north of the junction: a terminal track run both ways. Trams for the lines
+    // that end at Nils Ericsonsplatsen run up it to platform C and back (Gothenburg's trams have a cab at each end), as
+    // Västtrafik's shapes show. OSM leaves most of it untagged (both ways) but tags these two short ways one way, which
+    // cut platform C off from the south: runs to C were left out, 98 m off their track (October 2026).
+    1291064387: 0,
+    1291064388: 0,
   },
   forbid: [],
   // None at present (October 2026): every junction eases to 18 m.

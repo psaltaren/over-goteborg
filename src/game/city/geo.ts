@@ -92,17 +92,18 @@ export const STREET_Y = 18;
 
 /**
  * The places of the inner city, where its tram stops are (OSM's `railway=tram_stop`, the middle of each stop's
- * platforms): where the game starts, what the status line names, and the debug API's and the quality gate's scenes.
+ * platforms), each moved off the tracks to the nearest spot a tram passes clear of (`tests/city-tiles.test.ts`): where
+ * the game starts, what the status line names, and the debug API's and the quality gate's scenes.
  */
 export const PLACES: Record<string, Pt> = Object.fromEntries(([
-  ['Drottningtorget', 57.707731, 11.973195],
-  ['Nils Ericsonsplatsen', 57.709126, 11.971084],
-  ['Lilla Bommen', 57.709186, 11.96676],
+  ['Drottningtorget', 57.707732, 11.973192],
+  ['Nils Ericsonsplatsen', 57.709143, 11.971152],
+  ['Lilla Bommen', 57.709174, 11.966688],
   ['Brunnsparken', 57.70708, 11.96845],
-  ['Kungsportsplatsen', 57.704049, 11.969708],
-  ['Domkyrkan', 57.704278, 11.963704],
+  ['Kungsportsplatsen', 57.704082, 11.969751],
+  ['Domkyrkan', 57.704265, 11.963628],
   ['Grönsakstorget', 57.702526, 11.964342],
-  ['Stenpiren', 57.70581, 11.95774],
+  ['Stenpiren', 57.705834, 11.957675],
   ['Järntorget', 57.700067, 11.952939],
 ] as const).map(([name, lat, lon]) => [name, toGame(lat, lon)]));
 

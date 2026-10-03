@@ -1,7 +1,9 @@
 import { describe, expect, test } from 'bun:test';
+import { readFileSync } from 'node:fs';
+import { grow, PLAY } from '../src/game/city/geo';
 import schedule from '../src/game/city/osm/schedule.json';
 import tracks from '../src/game/city/osm/tracks.json';
-import { blocksIn, covered, DAYS, NIGHT_BEFORE, runBlocks, runPieces, runPosition, type ScheduleFile, type Trip } from '../src/game/city/schedule';
+import { blocksIn, covered, DAYS, NIGHT_BEFORE, OUT_OF_SERVICE, RunPath, runBlocks, runPieces, runPosition, signAt, unpackTrips, type ScheduleFile, type Trip } from '../src/game/city/schedule';
 import { readLinks, type TrackFile } from '../src/game/city/trackData';
 
 const file = schedule as unknown as ScheduleFile;
@@ -62,6 +64,46 @@ describe('the trams\' day', () => {
     }
   });
 
+  test('brings no tram out of thin air: every run comes in from out of sight and goes out of it', () => {
+    // A trip that ends in the area goes on as the next that starts there, or out of service to the edge
+    // (scripts/gbg-gtfs.ts, step 4): every run starts before its first stop and ends after its last, beyond the fog.
+    const near = grow(PLAY, 150);
+    const inside = ([x, z]: [number, number]) => x > near.x0 && x < near.x1 && z > near.z0 && z < near.z1;
+    for (const r of file.runs) {
+      expect(r.stops[0].s).toBeLessThan(0);
+      expect(r.stops[r.stops.length - 1].s).toBeGreaterThan(r.length);
+      const path = new RunPath(r, links);
+      expect(inside(path.point(0)) || inside(path.point(r.length))).toBe(false);
+    }
+  });
+
+  test('says on its sign where it goes, and out of service where it does not', () => {
+    for (const r of file.runs) {
+      const signs = r.signs ?? [];
+      for (let k = 1; k < signs.length; k++) expect(signs[k].s).toBeGreaterThanOrEqual(signs[k - 1].s);
+      for (const st of r.stops) {
+        if (st.s < 0 || st.s > r.length) continue;
+        // At every stop in the area the tram is in service, with a line and somewhere to go: as it comes in, or once it
+        // stands there (the sign changes as a tram arrives where its trip ends, or where one coming in starts).
+        const inService = (x: { line: string; headsign: string }) => x.line !== '' && x.headsign !== OUT_OF_SERVICE;
+        expect(inService(signAt(r, st.s - 0.01)) || inService(signAt(r, st.s))).toBe(true);
+        expect([1, -1]).toContain(st.side);
+      }
+    }
+    expect(file.runs.some((r) => r.signs?.some((x) => x.headsign === OUT_OF_SERVICE))).toBe(true);
+  });
+
+  test('gives the game the same trams, packed', () => {
+    const dir = 'src/game/city/osm/trams';
+    const runs = JSON.parse(readFileSync(`${dir}/runs.json`, 'utf8'));
+    expect(runs.runs).toEqual(file.runs);
+    expect(runs.dates).toEqual(file.dates);
+    for (const day of DAYS) {
+      const packed = JSON.parse(readFileSync(`${dir}/${day}.json`, 'utf8'));
+      expect(unpackTrips(packed.trips)).toEqual(file[day].map((t) => ({ run: t.run, times: t.times })));
+    }
+  });
+
   test('holds trams a little, not long: the queues at the busy stops', () => {
     for (const day of DAYS) {
       const held = file[day].map((t) => t.held ?? 0).sort((a, b) => a - b);
@@ -76,8 +118,7 @@ describe('the trams\' day', () => {
     conflicts.set(a, [...(conflicts.get(a) ?? []), b]);
     conflicts.set(b, [...(conflicts.get(b) ?? []), a]);
   }
-  // Each kind of day with each night that can come before it (a Monday morning follows Sunday night, a Tuesday morning
-  // a weekday's).
+  // Each kind of day with each night that can come before it: any (a holiday runs Sunday's timetable after a weekday).
   for (const [day, before] of DAYS.flatMap((d) => NIGHT_BEFORE[d].map((b) => [d, b] as const))) {
     test(`keeps every tram clear of every other, every second of a ${day} after a ${before} night`, () => {
       // The trams of the night before still out after midnight, on this day's clock.

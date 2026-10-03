@@ -1,9 +1,19 @@
 {
-  "at": "2026-10-03T17:12:11.355Z",
-  "commit": "c371768",
+  "at": "2026-10-03T21:15:29.830Z",
+  "commit": "1f6d745",
   "fps": {
     "desktop": {
       "Drottningtorget": {
+        "fps": 60,
+        "p95": 16.8,
+        "slow": 0,
+        "worst": 17,
+        "hitches": 0,
+        "pixelRatio": 2,
+        "calls": 70,
+        "triangles": 192028
+      },
+      "Brunnsparken": {
         "fps": 60,
         "p95": 16.7,
         "slow": 0,
@@ -11,37 +21,37 @@
         "hitches": 0,
         "pixelRatio": 2,
         "calls": 61,
-        "triangles": 143716
+        "triangles": 254215
       },
-      "Brunnsparken": {
+      "Kungsportsplatsen": {
         "fps": 60,
         "p95": 16.7,
         "slow": 0,
         "worst": 17,
         "hitches": 0,
         "pixelRatio": 2,
-        "calls": 52,
-        "triangles": 203439
+        "calls": 71,
+        "triangles": 226328
       },
-      "Kungsportsplatsen": {
+      "Järntorget": {
         "fps": 60,
         "p95": 16.8,
         "slow": 0,
         "worst": 17,
         "hitches": 0,
         "pixelRatio": 2,
-        "calls": 62,
-        "triangles": 177198
+        "calls": 79,
+        "triangles": 174753
       },
-      "Järntorget": {
+      "Trams at Drottningtorget": {
         "fps": 60,
         "p95": 16.7,
         "slow": 0,
         "worst": 17,
         "hitches": 0,
         "pixelRatio": 2,
-        "calls": 70,
-        "triangles": 151107
+        "calls": 65,
+        "triangles": 146874
       },
       "Walking the inner city": {
         "fps": 60,
@@ -50,8 +60,8 @@
         "worst": 17,
         "hitches": 0,
         "pixelRatio": 2,
-        "calls": 52,
-        "triangles": 123010
+        "calls": 61,
+        "triangles": 153740
       }
     },
     "phone": {
@@ -62,8 +72,8 @@
         "worst": 17,
         "hitches": 0,
         "pixelRatio": 1.5,
-        "calls": 37,
-        "triangles": 84383
+        "calls": 46,
+        "triangles": 128515
       },
       "Brunnsparken": {
         "fps": 60,
@@ -72,28 +82,38 @@
         "worst": 17,
         "hitches": 0,
         "pixelRatio": 1.5,
-        "calls": 27,
-        "triangles": 121784
+        "calls": 36,
+        "triangles": 152548
       },
       "Kungsportsplatsen": {
         "fps": 60,
-        "p95": 16.8,
+        "p95": 16.7,
         "slow": 0,
         "worst": 17,
         "hitches": 0,
         "pixelRatio": 1.5,
-        "calls": 23,
-        "triangles": 105765
+        "calls": 32,
+        "triangles": 137353
       },
       "Järntorget": {
         "fps": 60,
-        "p95": 16.8,
+        "p95": 16.7,
         "slow": 0,
         "worst": 17,
         "hitches": 0,
         "pixelRatio": 1.5,
-        "calls": 27,
-        "triangles": 91538
+        "calls": 36,
+        "triangles": 110814
+      },
+      "Trams at Drottningtorget": {
+        "fps": 60,
+        "p95": 16.7,
+        "slow": 0,
+        "worst": 17,
+        "hitches": 0,
+        "pixelRatio": 1.5,
+        "calls": 34,
+        "triangles": 108116
       },
       "Walking the inner city": {
         "fps": 60,
@@ -102,27 +122,27 @@
         "worst": 17,
         "hitches": 0,
         "pixelRatio": 1.5,
-        "calls": 25,
-        "triangles": 62130
+        "calls": 34,
+        "triangles": 87888
       }
     }
   },
   "load": {
     "desktop": {
-      "downloadS": 0.12110000002384186,
-      "bytes": 873500,
+      "downloadS": 0.1135,
+      "bytes": 882577,
       "wasmBytes": 652517,
-      "wasmDoneS": 0.12110000002384186,
-      "compileS": 0.015300000071525573,
-      "readyS": 0.4006000000238419
+      "wasmDoneS": 0.1135,
+      "compileS": 0.0145,
+      "readyS": 0.4301999999284744
     },
     "phone": {
-      "downloadS": 4.374100000023842,
-      "bytes": 873500,
+      "downloadS": 4.765400000095368,
+      "bytes": 882577,
       "wasmBytes": 652517,
-      "wasmDoneS": 4.374100000023842,
-      "compileS": 3.4363000000715256,
-      "readyS": 5.479699999928474
+      "wasmDoneS": 4.765400000095368,
+      "compileS": 3.8295,
+      "readyS": 6.104799999952316
     }
   }
 }

@@ -9,6 +9,8 @@ import type { Physics, StaticCollider } from '../physics';
 import { Section } from '../world/section';
 import { streetOsmSteps } from '../world/streetOsm';
 import { grow, STREET_Y, TILE, type Pt, type Rect } from './geo';
+import { Rails } from './rails';
+import type { Link } from './trackData';
 
 const OPEN_AMBIENT = rgb(0x4a4a4a);
 /** The walls of a house a square owns that reach this far into the next still get their colliders from it. */
@@ -157,14 +159,21 @@ export class Tiles {
   private readonly files = new Map<string, TileFile | null | false | 'failed'>();
   /** The lit windows of the squares built, lit or put out together (`lightWindows`). */
   private readonly windows = new Set<Mesh>();
+  /** The tram tracks to lay in each square: not known yet (undefined), or none to be had (null, offline). */
+  private rails: Rails | null | undefined = undefined;
 
   /** @param windowLight how lit the windows are now, 0 by day to 1 at night. */
   constructor(private readonly physics: Physics, private readonly windowLight: () => number) {}
 
-  /** Is the square's file here (or failed, or none to be had)? Starts fetching it if not. */
+  /** The tram tracks, once fetched (null when they cannot be): the squares with files wait for them. */
+  setTracks(links: Link[] | null): void {
+    this.rails = links ? new Rails(links) : null;
+  }
+
+  /** Is the square's file here (or failed, or none to be had), and the tracks known? Starts fetching it if not. */
   ready(key: string): boolean {
     const known = this.files.get(key);
-    if (known !== undefined) return known !== null;
+    if (known !== undefined) return known !== null && (known === false || this.rails !== undefined);
     const url = fileUrls()[key];
     if (!url) {
       this.files.set(key, false);
@@ -199,13 +208,16 @@ export class Tiles {
       quay.push(this.physics.turnedBox(centre, { x: len / 2 + 0.15, y: (QUAY.up + QUAY.down) / 2, z: QUAY.thick / 2 }, Math.atan2(-(b[1] - a[1]), b[0] - a[0])));
     }
     yield;
+    // The tram tracks: the rails in the street, the wire over them and its poles.
+    const poles = this.rails ? yield* this.rails.buildSteps(s, this.physics, rect, STREET_Y) : [];
+    yield;
     const group = yield* s.finishSteps();
     const windows: Mesh | null = built.windows;
     if (windows) this.windows.add(windows);
     return {
       group,
       release: () => {
-        for (const c of [...built.colliders, ...quay]) this.physics.remove(c);
+        for (const c of [...built.colliders, ...quay, ...poles]) this.physics.remove(c);
         if (windows) this.windows.delete(windows);
       },
     };

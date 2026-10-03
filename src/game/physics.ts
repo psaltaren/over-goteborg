@@ -102,6 +102,15 @@ export class Physics {
     this.world.removeCollider(collider as RAPIER.Collider, false);
   }
 
+  /**
+   * Whether a person could stand with their feet at (`x`, `y`, `z`): no collider where a capsule the player's size would
+   * be (a hand's breadth off the ground), but `except` (the player's own).
+   */
+  free(x: number, y: number, z: number, except?: RAPIER.Collider): boolean {
+    const shape = new this.R.Capsule(0.55, 0.3);
+    return !this.world.intersectionWithShape({ x, y: y + 0.95, z }, { x: 0, y: 0, z: 0, w: 1 }, shape, undefined, undefined, except);
+  }
+
   step(dt: number): void {
     this.world.timestep = dt;
     this.world.step();

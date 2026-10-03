@@ -162,6 +162,9 @@
     "button": "Stuck? Back to the street",
     "done": "Back on the street."
   },
+  "tram": {
+    "aside": "The tram rings its bell. You step aside."
+  },
   "battery": {
     "toggle": "Battery saver",
     "hint": "Easier on the computer: 30 frames a second and fewer pixels. Fans and battery will thank you.",

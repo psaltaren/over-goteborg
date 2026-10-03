@@ -14,14 +14,20 @@
  *    area, with the stops on it, and the stop before and the one after, out of sight.
  * 3. Trips. Each trip's times at the run's stops, with time to stand at a stop (`DWELL`) where the timetable leaves
  *    none, and a minute at a terminus in the area before setting off.
- * 4. Blocks. The day is run trip by trip in the order they reach the junctions: a tram that would enter a block another
+ * 4. Ends. No tram comes out of thin air: a trip that ends in the area (a short turn at Drottningtorget) goes on as the
+ *    next trip that starts near there, if the track leads there in the time between, so the two are one tram; what is
+ *    left runs on out of service to the edge of the area, or in from it.
+ * 5. Blocks. The day is run trip by trip in the order they reach the junctions: a tram that would enter a block another
  *    holds, or one that conflicts with it (`tracks.json`), is held at the stop before for as long as it takes, and the
- *    rest of its trip moves on by as much. The trams of the night before that run past midnight hold their blocks too.
- *    The test (`tests/schedule.test.ts`) then checks every second of each day, the night before's trams with it.
+ *    rest of its trip moves on by as much. The trams of every night that run past midnight hold their blocks too, so
+ *    any day may follow any other. The test (`tests/schedule.test.ts`) then checks every second of each day, after
+ *    each night.
+ * 6. Written: `schedule.json` for the scripts and tests, and the game's files in `osm/trams/` (the runs, and each day's
+ *    trips packed), which it fetches when it starts.
  */
-import { existsSync, mkdirSync, statSync } from 'node:fs';
+import { existsSync, mkdirSync, rmSync, statSync } from 'node:fs';
 import { grow, PLAY, toGame, TRACK_REACH, type Pt } from '../src/game/city/geo';
-import { blocksIn, covered, DAYS, NIGHT_BEFORE, runBlocks, runPieces, runPosition, type Day, type Run, type RunStop, type ScheduleFile, type Trip } from '../src/game/city/schedule';
+import { blocksIn, covered, DAYS, NIGHT_BEFORE, OUT_OF_SERVICE, packTrips, runBlocks, runPieces, runPosition, type Day, type Run, type RunStop, type ScheduleFile, type Sign, type Trip } from '../src/game/city/schedule';
 import { endDir, pointAt, polylineLength, prevsOf, readLinks, startDir, turn, type TrackFile } from '../src/game/city/trackData';
 import { TRAM_ACCEL, TRAM_LENGTH } from '../src/game/layout';
 import { splitCsv } from '../server/gtfs';
@@ -34,6 +40,8 @@ const ZIP = `${CACHE}/vt.zip`;
 const DIR = `${CACHE}/vt`;
 const URL_BASE = 'https://opendata.samtrafiken.se/gtfs/vt/vt.zip';
 const OUT = 'src/game/city/osm/schedule.json';
+/** The game's copy: the runs, and each day's trips packed (`packTrips`). */
+const GAME_DIR = 'src/game/city/osm/trams';
 const LICENSE = 'Timetable from Västtrafik through Trafiklab (GTFS Regional), CC0 1.0: https://www.trafiklab.se/api/gtfs-datasets/gtfs-regional/';
 /** Västtrafik's trams in GTFS's extended route types. */
 const TRAM = '900';
@@ -46,6 +54,12 @@ const LAYOVER_AFTER = 30;
 const MARGIN = 3;
 /** A stop further than this from the track it is matched to is taken for a bad match, and its run left out. */
 const STOP_OFF = 8;
+/** How fast a tram runs out of service, to or from the edge of the area or between two of its trips (m/s). */
+const EMPTY_SPEED = 8;
+/** The longest a tram stands where its next trip starts, waiting for it, rather than leave the area and another come. */
+const TURN_WAIT = 180;
+/** How far past either end of its run a tram coming in or going out of service starts or ends: its length and more. */
+const OUT_OF_SIGHT = TRAM_LENGTH + 5;
 
 // ---- 1. The feed. ----
 
@@ -292,7 +306,7 @@ function runsOf(tripId: string): RunUse[] {
     let after = inside.length ? inside[inside.length - 1] + 1 : -1;
     if (!inside.length) after = list.findIndex((_, i) => u[i] > m.u1);
     if (before >= 0) {
-      runStops.push(stopAt(list[before].stop, Math.min(-1, -(m.u0 - u[before])), 0));
+      runStops.push(stopAt(list[before].stop, Math.min(-1, -(m.u0 - u[before])), 0, 1));
       at.push(before);
     }
     let last = -Infinity, bad = '';
@@ -302,11 +316,11 @@ function runsOf(tripId: string): RunUse[] {
       if (d > STOP_OFF) bad ||= `${name} ${d.toFixed(0)} m off`;
       else if (s < last) bad ||= `${name} out of order`;
       last = s;
-      runStops.push(stopAt(list[i].stop, s, d));
+      runStops.push(stopAt(list[i].stop, s, d, sideOf(line, s, stops.get(list[i].stop)!.at)));
       at.push(i);
     }
     if (after >= 0 && after < list.length) {
-      runStops.push(stopAt(list[after].stop, Math.max(length + 1, length + (u[after] - m.u1)), 0));
+      runStops.push(stopAt(list[after].stop, Math.max(length + 1, length + (u[after] - m.u1)), 0, 1));
       at.push(after);
     }
     if (bad || runStops.length < 2) {
@@ -329,9 +343,25 @@ function runsOf(tripId: string): RunUse[] {
   return out;
 }
 
-function stopAt(id: string, s: number, off: number): RunStop {
+function stopAt(id: string, s: number, off: number, side: 1 | -1): RunStop {
   const st = stops.get(id)!;
-  return { stop: id, name: st.name, platform: st.platform, s: round2(s), off: round2(off) };
+  return { stop: id, name: st.name, platform: st.platform, s: round2(s), off: round2(off), side };
+}
+
+/** Which side of a run's track (`line`) a platform at `p` lies on, `s` meters along it: right unless it is clearly left. */
+function sideOf(line: Pt[], s: number, p: Pt): 1 | -1 {
+  // The segment that holds `s`, measured along the line (its points are not a meter apart everywhere: a piece's last
+  // step is shorter, and a junction's point comes twice).
+  let i = 0;
+  for (let along = 0; i + 2 < line.length; i++) {
+    const len = Math.hypot(line[i + 1][0] - line[i][0], line[i + 1][1] - line[i][1]);
+    if (along + len >= s && len > 0) break;
+    along += len;
+  }
+  const [ax, az] = line[i], [bx, bz] = line[i + 1];
+  // Right of the way (dx, dz) is (-dz, dx): z is to the right looking along +x.
+  const right = (p[0] - ax) * -(bz - az) + (p[1] - az) * (bx - ax);
+  return right < -0.5 ? -1 : 1;
 }
 
 function round2(v: number) {
@@ -371,7 +401,237 @@ for (const day of DAYS) {
 }
 if (dropped.size) report.push(`WARN runs left out (a stop further than ${STOP_OFF} m from the matched track, or out of order): ${[...dropped].map(([k, n]) => `${k} (${n})`).join('; ')}`);
 
-// ---- 4. The block pass. ----
+// ---- 4. Ends in the area. ----
+
+/** Whether a trip's run starts, or ends, at a stop in the area (a terminus there), rather than out of sight. */
+const startsIn = (r: Run) => r.stops[0].s >= 0;
+const endsIn = (r: Run) => r.stops[r.stops.length - 1].s <= r.length;
+
+/** Seconds a tram takes over `d` meters out of service, from standing to standing (as `hop` runs it at that time). */
+const emptyTime = (d: number) => (d >= (EMPTY_SPEED * EMPTY_SPEED) / TRAM_ACCEL ? d / EMPTY_SPEED + EMPTY_SPEED / TRAM_ACCEL : 2 * Math.sqrt(d / TRAM_ACCEL));
+
+/**
+ * The shortest way along the track from link `from` to one `goal` takes (forward over `next`, or backward over the links
+ * that lead in), as the links in order from `from`, `from` itself included; never onto a twin (no turning back where a
+ * track runs both ways). `from` may be the goal too, the long way round a loop.
+ */
+function way(from: number, forward: boolean, goal: (id: number) => boolean, limit = 2000): number[] | null {
+  const steps = (id: number) => (forward ? links[id].next : prevs[id]).filter((n) => n !== links[id].twin);
+  const dist = new Map<number, number>();
+  const back = new Map<number, number>();
+  const queue: number[] = [];
+  for (const n of steps(from)) {
+    dist.set(n, links[n].length);
+    back.set(n, from);
+    queue.push(n);
+  }
+  while (queue.length) {
+    queue.sort((a, b) => dist.get(a)! - dist.get(b)!);
+    const u = queue.shift()!;
+    if (goal(u)) {
+      const path = [u];
+      for (let x = back.get(u)!; ; x = back.get(x)!) {
+        path.unshift(x);
+        if (x === from) break;
+      }
+      return forward ? path : path.reverse();
+    }
+    for (const n of steps(u)) {
+      const d = dist.get(u)! + links[n].length;
+      if (d > limit || d >= (dist.get(n) ?? Infinity)) continue;
+      dist.set(n, d);
+      back.set(n, u);
+      if (!queue.includes(n)) queue.push(n);
+    }
+  }
+  return null;
+}
+
+/** Where meters `s` along a run lie: the index of its link in the run, and meters into that link. */
+function onLink(run: Pick<Run, 'links' | 'from' | 'to'>, s: number): { k: number; o: number } {
+  const pieces = runPieces({ ...run, id: 0, line: '', headsign: '', length: 0, stops: [] }, links);
+  for (let k = 0; k < pieces.length; k++) {
+    const p = pieces[k];
+    if (s <= p.at + (p.s1 - p.s0) || k === pieces.length - 1) return { k, o: p.s0 + s - p.at };
+  }
+  return { k: 0, o: run.from };
+}
+
+/** Meters along a run of meters `o` into its `k`th link. */
+function alongLinks(run: Pick<Run, 'links' | 'from' | 'to'>, k: number, o: number): number {
+  const p = runPieces({ ...run, id: 0, line: '', headsign: '', length: 0, stops: [] }, links)[k];
+  return p.at + o - p.s0;
+}
+
+const signsOf = (r: Run): Sign[] => r.signs ?? [{ s: -1e9, line: r.line, headsign: r.headsign }];
+
+/**
+ * Run `b` taken on from the end of run `a` as one tram: `a`'s track, the way from its end to `b`'s (along `b` itself
+ * where `a` ends on it, else the shortest way to it), and `b`'s from there on; `b`'s stops and signs moved along. Null
+ * where the track does not lead from the one to the other before `b`'s first stop. `merged` when `b` sets out from
+ * where `a` stopped (its first stop is `a`'s last).
+ */
+function joinRuns(a: Run, b: Run): { run: Omit<Run, 'id'>; at: number; merged: boolean } | null {
+  const last = a.links[a.links.length - 1];
+  const aEnd = a.stops[a.stops.length - 1];
+  const firstStop = onLink(b, b.stops[0].s).k;
+  const attempt = (seq: number[], joinAt: number): { run: Omit<Run, 'id'>; at: number; merged: boolean } | null => {
+    const shape = { links: seq, from: a.from, to: b.to };
+    const length = runPieces({ ...shape, id: 0, line: '', headsign: '', length: 0, stops: [] }, links).reduce((sum, p) => sum + p.s1 - p.s0, 0);
+    // Each of b's stops by its link and meters into it, on the joined run.
+    const shift = (x: RunStop): RunStop => {
+      const { k, o } = onLink(b, x.s);
+      return { ...x, s: round2(alongLinks(shape, joinAt + k, o)) };
+    };
+    const bStops = b.stops.map(shift);
+    const at = bStops[0].s;
+    if (at < aEnd.s - 1) return null;
+    const merged = at - aEnd.s < 2;
+    const stops = [...a.stops, ...(merged ? bStops.slice(1) : bStops)];
+    for (let i = 1; i < stops.length; i++) if (stops[i].s <= stops[i - 1].s) return null;
+    // The sign changes as the tram arrives where a's trip ends.
+    const signs = [...signsOf(a), ...signsOf(b).map((x, i) => ({ ...x, s: i ? round2(alongLinks(shape, joinAt + onLink(b, x.s).k, onLink(b, x.s).o)) : aEnd.s }))];
+    return { run: { line: a.line, headsign: a.headsign, signs, links: seq, from: a.from, to: b.to, length: round2(length), stops }, at, merged };
+  };
+  // a ends on one of b's links before its first stop: on along it.
+  const j = b.links.indexOf(last);
+  if (j >= 0 && j <= firstStop) {
+    const joined = attempt([...a.links, ...b.links.slice(j + 1)], a.links.length - 1 - j);
+    if (joined) return joined;
+  }
+  // Else the shortest way to one of them (round a loop, back to a's own last link if need be).
+  const path = way(last, true, (id) => {
+    const k = b.links.indexOf(id);
+    return k >= 0 && k <= firstStop;
+  }, 1500);
+  if (!path) return null;
+  const k = b.links.indexOf(path[path.length - 1]);
+  return attempt([...a.links, ...path.slice(1), ...b.links.slice(k + 1)], a.links.length + path.length - 2 - k);
+}
+
+/** A run that comes in out of service from the edge of the area to the start of `b`, as one: null if no track leads in. */
+function headOn(b: Run): Omit<Run, 'id'> | null {
+  const path = way(b.links[0], false, (id) => links[id].from === -1) ?? (links[b.links[0]].from === -1 ? [b.links[0]] : null);
+  if (!path) return null;
+  const seq = [...path.slice(0, -1), ...b.links];
+  const shape = { links: seq, from: 0, to: b.to };
+  const length = runPieces({ ...shape, id: 0, line: '', headsign: '', length: 0, stops: [] }, links).reduce((sum, p) => sum + p.s1 - p.s0, 0);
+  const moved = (s: number) => {
+    const { k, o } = onLink(b, s);
+    return round2(alongLinks(shape, path.length - 1 + k, o));
+  };
+  const stops = [{ stop: '', name: OUT_OF_SERVICE, platform: '', s: -OUT_OF_SIGHT, off: 0, side: 1 as const }, ...b.stops.map((x) => ({ ...x, s: moved(x.s) }))];
+  const signs = [{ s: -1e9, line: '', headsign: OUT_OF_SERVICE }, ...signsOf(b).map((x, i) => ({ ...x, s: i ? moved(x.s) : stops[1].s }))];
+  return { line: b.line, headsign: b.headsign, signs, links: seq, from: 0, to: b.to, length: round2(length), stops };
+}
+
+/** A run that goes on out of service from the end of `a` to the edge of the area: null if no track leads out. */
+function tailOn(a: Run): Omit<Run, 'id'> | null {
+  const last = a.links[a.links.length - 1];
+  const path = links[last].to === -1 ? [last] : way(last, true, (id) => links[id].to === -1);
+  if (!path) return null;
+  const seq = [...a.links, ...path.slice(1)];
+  const end = path[path.length - 1];
+  const shape = { links: seq, from: a.from, to: links[end].length };
+  const length = runPieces({ ...shape, id: 0, line: '', headsign: '', length: 0, stops: [] }, links).reduce((sum, p) => sum + p.s1 - p.s0, 0);
+  const aEnd = a.stops[a.stops.length - 1];
+  const stops = [...a.stops, { stop: '', name: OUT_OF_SERVICE, platform: '', s: round2(length + OUT_OF_SIGHT), off: 0, side: 1 as const }];
+  const signs = [...signsOf(a), { s: aEnd.s, line: '', headsign: OUT_OF_SERVICE }];
+  return { line: a.line, headsign: a.headsign, signs, links: seq, from: a.from, to: shape.to, length: round2(length), stops };
+}
+
+/** A run made here, kept once however many trips share it. */
+function register(r: Omit<Run, 'id'>): number {
+  const k = `${r.links.join(',')}|${r.from}|${r.to}|${r.stops.map((x) => `${x.stop}@${x.s}`).join(',')}|${(r.signs ?? []).map((x) => `${x.s}:${x.line}:${x.headsign}`).join(',')}`;
+  if (!runKey.has(k)) {
+    runKey.set(k, runs.length);
+    runs.push({ id: runs.length, ...r });
+  }
+  return runKey.get(k)!;
+}
+
+const joins = new Map<string, ReturnType<typeof joinRuns>>();
+const joinOf = (a: number, b: number) => {
+  const k = `${a}>${b}`;
+  if (!joins.has(k)) joins.set(k, joinRuns(runs[a], runs[b]));
+  return joins.get(k)!;
+};
+const ends = { chained: 0, tails: 0, heads: 0, stranded: 0 };
+for (const day of DAYS) {
+  const list = days[day];
+  const starting = list.filter((t) => startsIn(runs[t.run])).sort((a, b) => a.times[1] - b.times[1]);
+  const next = new Map<Trip, Trip>();
+  const taken = new Set<Trip>();
+  // Earliest arrival first, each on as the earliest trip it can reach in time.
+  for (const a of list.filter((t) => endsIn(runs[t.run])).sort((x, y) => x.times[x.times.length - 1] - y.times[y.times.length - 1])) {
+    const leaves = a.times[a.times.length - 1];
+    for (const b of starting) {
+      if (taken.has(b) || b === a) continue;
+      const departs = b.times[1];
+      if (departs < leaves) continue;
+      if (departs - leaves > TURN_WAIT + LAYOVER_BEFORE) break;
+      const j = joinOf(a.run, b.run);
+      if (!j) continue;
+      const arrives = j.merged ? leaves : leaves + emptyTime(j.at - runs[a.run].stops[runs[a.run].stops.length - 1].s);
+      if (arrives + DWELL > departs) continue;
+      next.set(a, b);
+      taken.add(b);
+      break;
+    }
+  }
+  const out: Trip[] = [];
+  // Each tram's trips in order, from one no other leads to. A join that fails on the trips joined so far (where the
+  // rounding of the longer run comes out the other way than the pair's did) ends that tram there, and the trip it
+  // would have joined starts a tram of its own.
+  const firsts = list.filter((t) => !taken.has(t));
+  for (let q = 0; q < firsts.length; q++) {
+    const first = firsts[q];
+    let run = runs[first.run];
+    let times = [...first.times];
+    let id = first.run;
+    for (let cur = first; next.has(cur); ) {
+      const b = next.get(cur)!;
+      const j = joinOf(id, b.run);
+      if (!j) {
+        firsts.push(b);
+        break;
+      }
+      const leaves = times[times.length - 1];
+      if (j.merged) times = [...times.slice(0, -1), b.times[1], ...b.times.slice(2)];
+      else times = [...times, leaves + emptyTime(j.at - run.stops[run.stops.length - 1].s), ...b.times.slice(1)];
+      id = register(j.run);
+      run = runs[id];
+      cur = b;
+      ends.chained++;
+    }
+    if (startsIn(run)) {
+      const h = headOn(run);
+      if (h) {
+        id = register(h);
+        const enters = times[0] - emptyTime(runs[id].stops[1].s + OUT_OF_SIGHT);
+        times = [enters, enters, ...times];
+        run = runs[id];
+        ends.heads++;
+      } else ends.stranded++;
+    }
+    if (endsIn(run)) {
+      const t = tailOn(run);
+      if (t) {
+        id = register(t);
+        const leaves = times[times.length - 1];
+        const gone = leaves + emptyTime(runs[id].stops[runs[id].stops.length - 1].s - run.stops[run.stops.length - 1].s);
+        times = [...times, gone, gone];
+        run = runs[id];
+        ends.tails++;
+      } else ends.stranded++;
+    }
+    out.push({ run: id, times });
+  }
+  days[day] = out;
+}
+report.push(`ends in the area: ${ends.chained} trips joined to the one before as one tram, ${ends.heads} coming in and ${ends.tails} going out out of service${ends.stranded ? `; WARN ${ends.stranded} with no track to or from the edge` : ''}`);
+
+// ---- 5. The block pass. ----
 
 const along = runs.map((r) => runBlocks(r, links, tracks.blocks));
 const conflictsOf = new Map<number, number[]>();
@@ -453,8 +713,9 @@ function pastMidnight(held: Map<number, Array<[number, number]>>): Map<number, A
   return out;
 }
 
-// Twice: once alone, then each day again with what the night before it holds taken from the first round. The nights
-// run late in the evening, which the morning's holds do not reach, so they come out of the second round the same.
+// Twice: once alone, then each day again with what every night holds taken from the first round (any day may follow
+// any other: a holiday). The nights run late in the evening, which the morning's holds do not reach, so they come out of
+// the second round the same.
 const original = Object.fromEntries(DAYS.map((d) => [d, days[d].map((t) => [...t.times])])) as Record<Day, number[][]>;
 const firstRound = Object.fromEntries(DAYS.map((d) => [d, blockPass(d, new Map()).held])) as Record<Day, Map<number, Array<[number, number]>>>;
 for (const day of DAYS) {
@@ -486,21 +747,34 @@ function firstIn(trip: Trip): number | null {
   return null;
 }
 
-// ---- Written. ----
+// ---- 6. Written. ----
 
 for (const day of DAYS) {
   days[day] = days[day].filter((t) => firstIn(t) !== null).map((t) => ({ run: t.run, times: t.times.map((v) => Math.round(v)), ...(t.held ? { held: Math.round(t.held) } : {}) }));
   days[day].sort((a, b) => a.times[0] - b.times[0]);
 }
+// Only the runs some trip takes (a trip joined to the next leaves its own run unused), numbered again in order.
+const used = [...new Set(DAYS.flatMap((d) => days[d].map((t) => t.run)))].sort((a, b) => a - b);
+const renumber = new Map(used.map((old, i) => [old, i]));
+const kept = used.map((old, i) => ({ ...runs[old], id: i }));
+runs.length = 0;
+runs.push(...kept);
+for (const day of DAYS) for (const t of days[day]) t.run = renumber.get(t.run)!;
 const file: Omit<ScheduleFile, 'runs' | Day> = {
   license: LICENSE,
   format: 'bun scripts/gbg-gtfs.ts. runs: a route\'s stretch through the area, along links of tracks.json (from meters into the first, to into the last), ' +
     'with its stops (s in meters along the run; the stop before the area below 0, the one after past its length). Per kind of day (weekday, saturday, sunday), ' +
-    'each trip as its run and [arrival, departure] at each of the run\'s stops in seconds from the service day\'s start (noon less 12 h), held: seconds the block pass held it.',
+    'each trip as its run and [arrival, departure] at each of the run\'s stops in seconds from the service day\'s start (noon less 12 h), held: seconds the block pass held it. ' +
+    'A run that is one tram\'s trips joined, or that runs out of service to or from the edge of the area, has signs: what its sign says from s meters on.',
   feed: feed.feed_version,
   dates,
 };
 writeJson(OUT, file, { runs, weekday: days.weekday, saturday: days.saturday, sunday: days.sunday });
+// The game's: the runs, and each day's trips packed, fetched apart so a day's are all it waits for.
+rmSync(GAME_DIR, { recursive: true, force: true });
+mkdirSync(GAME_DIR, { recursive: true });
+writeJson(`${GAME_DIR}/runs.json`, { license: LICENSE, format: 'As schedule.json\'s runs (bun scripts/gbg-gtfs.ts).', feed: feed.feed_version, dates }, { runs });
+for (const day of DAYS) writeJson(`${GAME_DIR}/${day}.json`, { license: LICENSE, format: 'Each trip as [run, then its times as whole seconds, each from the one before] (packTrips in src/game/city/schedule.ts).' }, { trips: packTrips(days[day]) });
 console.log(`${runs.length} runs from ${patterns.size} patterns`);
 if (matcher.gaps.length) {
   // Where a route's shape could not be followed on the tracks: track the graph lacks, or a turn it does not allow.

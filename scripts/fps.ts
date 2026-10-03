@@ -43,6 +43,9 @@ export const SCENES: Scene[] = [
   { name: 'Brunnsparken', set: "__us.go('Brunnsparken', 'Kungsportsplatsen')" },
   { name: 'Kungsportsplatsen', set: "__us.go('Kungsportsplatsen', 'Domkyrkan')" },
   { name: 'Järntorget', set: "__us.go('Järntorget', 'Grönsakstorget')" },
+  // Among the platforms at Drottningtorget, looking up the tracks toward Centralen: the most trams in view, coming,
+  // standing with their doors open, and going.
+  { name: 'Trams at Drottningtorget', set: "__us.go('Drottningtorget', 'Nils Ericsonsplatsen')" },
   // Through the city at a run and more, along x, where the squares are built as you come: the stutter test.
   // A fixed length, so the quick check walks as far as the full one and ends where the baseline was measured.
   { name: 'Walking the inner city', set: "__us.go('Brunnsparken', 'Domkyrkan')", travel: 22, seconds: 12 },

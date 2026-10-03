@@ -3,7 +3,7 @@
 // It writes the plain view (og.jpg, also the landing page's picture) and the preview card for each landing page
 // (og-sv.jpg, og-en.jpg): the same view with the sign, a line of pitch and the way in, since a preview with a headline
 // and a call to act is the one people click. Committed images, with the README's clip: see AGENTS.md. Re-run it when
-// the stations change their look.
+// the city or the trams change their look.
 import { spawn } from 'node:child_process';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -12,21 +12,28 @@ import { join } from 'node:path';
 const WIDTH = 1200;
 const HEIGHT = 630;
 const site = process.env.OG_SITE ?? 'http://localhost:4173/';
-// A weekday noon (`t` counts from one) at T-Centralen's blue line platform under the vines.
-const params = process.env.OG_PARAMS ?? 'debug&t=0&weather=clear';
-// Then time runs on until a train stands at the platform with its doors open. OG_SETUP replaces this.
-const setup = process.env.OG_SETUP ?? `(() => {
-  __us.goto(1);
-  const near = () => __us.services.some((s) => s.train.group.visible
-    && Math.abs(s.train.group.position.x - __us.player.feet.x) < 60 && Math.abs(s.train.group.position.z - __us.player.feet.z) < 8
-    && s.timetable.stateAt(s.clock).doors > 0.9);
-  for (let i = 0; i < 200 && !near(); i++) { __us.time += 5; __us.step(0.2, 5); }
+// A weekday morning in late September at Domkyrkan's platform A: a tram standing with its doors open, seen from just
+// ahead of its front and beside the track, three quarters on, on the right of the picture (the card's words go over
+// the park on the left).
+const params = process.env.OG_PARAMS ?? 'debug&clock=2026-09-23T10:20&weather=clear';
+const setup = process.env.OG_SETUP ?? `(async () => {
+  await __us.go('Domkyrkan', 'Kungsportsplatsen');
+  const p = __us.stops.platforms.find((q) => q.name === 'Domkyrkan' && q.letter === 'A');
+  const here = () => __us.trams.drawn.find((d) => d.state.stop >= 0 && d.state.doors > 0.9 && __us.runs[d.state.run].stops[d.state.stop].stop === p.stop);
+  for (let i = 0; i < 300 && !here(); i++) { __us.time += 5; __us.step(0.2, 5); }
+  const f = here().sections[0];
+  const nx = -f.dz, nz = f.dx;
+  const side = (p.post[0] - f.x) * nx + (p.post[1] - f.z) * nz > 0 ? 1 : -1;
+  const x = f.x + f.dx * (f.hl + 8) + nx * side * 2.6, z = f.z + f.dz * (f.hl + 8) + nz * side * 2.6;
+  __us.player.teleport(__us.player.feet.clone().set(x, 18.3, z), Math.atan2(f.dx, f.dz) + side * 0.3);
+  __us.player.pitch = 0.05;
+  __us.step(0.3, 30);
 })()`;
 const dir = process.env.OG_DIR ?? join(import.meta.dir, '..', 'public');
 // Each landing page's words for its card, as on the page itself.
 const cards = {
-  sv: { lead: 'Åk Stockholms tunnelbana i webbläsaren', note: 'Hela nätet, 100 stationer. Gratis, inget att installera.', cta: 'Gå ner i tunnelbanan' },
-  en: { lead: 'Ride the Stockholm metro in your browser', note: 'The whole network, 100 stations. Free, nothing to install.', cta: 'Go down to the metro' },
+  sv: { lead: 'Gå i Göteborg och åk spårvagn i webbläsaren', note: 'Centralen till Järntorget, vagnarna efter Västtrafiks tidtabell. Gratis, inget att installera.', cta: 'Gå ut i staden' },
+  en: { lead: 'Walk Gothenburg and ride its trams in your browser', note: 'Centralen to Järntorget, the trams on Västtrafik\'s timetable. Free, nothing to install.', cta: 'Go out into the city' },
 };
 const chrome = process.env.CHROME_PATH ?? '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
 
@@ -108,14 +115,14 @@ try {
             color: #fff; background: linear-gradient(90deg, rgba(5, 6, 8, 0.86) 0%, rgba(5, 6, 8, 0.62) 42%, rgba(5, 6, 8, 0) 72%),
               linear-gradient(0deg, rgba(5, 6, 8, 0.7) 0%, rgba(5, 6, 8, 0) 55%); }
           #og-card .sign { padding: 12px 28px; font: 600 44px/1.1 var(--f); text-transform: uppercase; white-space: nowrap;
-            background: linear-gradient(180deg, #2449a6, #1b3a8f 55%, #183482); border-bottom: 9px solid #f2c200; border-radius: 2px;
-            box-shadow: 0 0 60px rgba(36, 73, 166, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.18); }
+            background: linear-gradient(180deg, #2a86c4, #1f72ad 55%, #1b67a0); border-bottom: 9px solid #eee8d6; border-radius: 2px;
+            box-shadow: 0 0 60px rgba(59, 168, 224, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.18); }
           #og-card h2 { margin: 30px 0 0; max-width: 620px; font: 700 52px/1.08 var(--f); text-shadow: 0 2px 18px rgba(0, 0, 0, 0.6); }
           #og-card p { margin: 14px 0 0; max-width: 700px; font: 500 25px/1.3 var(--f); color: #d6deea; text-shadow: 0 2px 12px rgba(0, 0, 0, 0.7); }
           #og-card .cta { margin-top: 30px; padding: 17px 34px; font: 700 26px/1 var(--f); border: 3px solid #fff; border-radius: 12px;
-            background: #1c63c4; box-shadow: 0 0 28px rgba(28, 99, 196, 0.65); }
+            background: #1f72ad; box-shadow: 0 0 28px rgba(59, 168, 224, 0.6); }
         </style>
-        <div class="sign">Under Stockholm</div>
+        <div class="sign">Över Göteborg</div>
         <h2>${card.lead}</h2>
         <p>${card.note}</p>
         <div class="cta">${card.cta} →</div>`)};

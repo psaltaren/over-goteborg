@@ -41,6 +41,7 @@
     "sound": "Sound",
     "pixels": "Pixel mode",
     "help": "Walk with the left thumbstick. Drag across the view to look around. Use the buttons to run, jump and sit down. You can walk and look at the same time.",
+    "helpCity": "Steer with the left thumbstick. Drag across the view to look around. Use the buttons to run and jump. You can walk and look at the same time.",
     "seatHint": "Tap Sit to sit down.",
     "standHint": "Tap Stand up to get up.",
     "seated": "You are sitting down. Tap Stand up to get up.",
@@ -163,7 +164,8 @@
     "done": "Back on the street."
   },
   "tram": {
-    "aside": "The tram rings its bell. You step aside."
+    "aside": "The tram rings its bell. You step aside.",
+    "alight": "The tram leaves the inner city. You get off."
   },
   "battery": {
     "toggle": "Battery saver",

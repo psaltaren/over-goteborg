@@ -271,6 +271,9 @@ export class Hud {
     this.driverButton.textContent = driving ? text.driver.exit : text.driver.start;
   }
 
+  /** The help names the city's keys, not the metro's (set by the city's game, which then relabels). */
+  city = false;
+
   /** Writes every label in the current language: once at the start, and again when the player switches. */
   relabel(): void {
     const ui = lang();
@@ -281,7 +284,10 @@ export class Hud {
     // The keys as the player has bound them.
     const k = (action: Action) => `<kbd>${escapeHtml(keyName(settings.key(action)))}</kbd>`;
     const walk = (['forward', 'left', 'back', 'right'] as const).map((a) => keyName(settings.key(a))).join('');
-    const keys = (more: string) => `<kbd>${escapeHtml(walk)}</kbd> ${text.walk} · ${more}${k('run')} ${text.run} · ${k('jump')} ${text.jump} · ${k('sit')} ${text.sit} · ${k('use')} ${text.use} · ${k('drive')} ${text.driver.title.toLowerCase()} · ${k('ghosts')} ${text.ghosts.toggle.toLowerCase()} · ${k('screensaver')} ${text.saver.start.toLowerCase()} · ${k('mute')} ${text.mute} · ${k('pixels')} ${text.pixels}`;
+    // The city (`city`) has none of the metro's seats, doors, cab, other players or screensaver yet, and a tram's sway.
+    const keys = (more: string) => this.city
+      ? `<kbd>${escapeHtml(walk)}</kbd> ${text.walk} · ${more}${k('run')} ${text.run} · ${k('jump')} ${text.jump} · ${k('motion')} ${text.motion.toLowerCase()} · ${k('mute')} ${text.mute} · ${k('pixels')} ${text.pixels}`
+      : `<kbd>${escapeHtml(walk)}</kbd> ${text.walk} · ${more}${k('run')} ${text.run} · ${k('jump')} ${text.jump} · ${k('sit')} ${text.sit} · ${k('use')} ${text.use} · ${k('drive')} ${text.driver.title.toLowerCase()} · ${k('ghosts')} ${text.ghosts.toggle.toLowerCase()} · ${k('screensaver')} ${text.saver.start.toLowerCase()} · ${k('mute')} ${text.mute} · ${k('pixels')} ${text.pixels}`;
     for (const el of [...this.root.querySelectorAll<HTMLElement>('[data-key]'), ...this.pause.querySelectorAll<HTMLElement>('[data-key]')]) {
       const code = settings.key(el.dataset.key as Action);
       el.setAttribute('aria-keyshortcuts', code.replace(/^Key|^Digit/, ''));

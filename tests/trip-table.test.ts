@@ -105,3 +105,19 @@ function clear(from: number, to: number): string[] {
   if (most < 15) found.push(`at most ${most} trams at once: the day did not load`);
   return found;
 }
+
+describe('the departures from a stop', () => {
+  test('are the trams that leave it next, soonest first, as the trams are seen to leave', () => {
+    const trams = table();
+    const stop = file.runs.flatMap((r) => r.stops).find((s) => s.name === 'Brunnsparken' && s.platform === 'A1')!.stop;
+    const at = stockholmEpoch(2026, 10, 7, 8, 0);
+    const next = trams.departures(stop, at, 3);
+    expect(next.length).toBe(3);
+    for (let k = 1; k < next.length; k++) expect(next[k].at).toBeGreaterThanOrEqual(next[k - 1].at);
+    expect(next[0].at).toBeGreaterThanOrEqual(at);
+    expect(next[0].at - at).toBeLessThan(600);
+    // The first to leave stands at the stop with its doors open just before it leaves, and is gone a few seconds after.
+    const standing = trams.at(next[0].at - 4).find((st) => st.stop >= 0 && file.runs[st.run].stops[st.stop].stop === stop && st.line === next[0].line);
+    expect(standing).toBeDefined();
+  });
+});

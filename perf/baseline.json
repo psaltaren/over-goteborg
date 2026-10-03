@@ -1,6 +1,6 @@
 {
-  "at": "2026-10-03T15:41:47.158Z",
-  "commit": "d63ae0c",
+  "at": "2026-10-03T17:12:11.355Z",
+  "commit": "c371768",
   "fps": {
     "desktop": {
       "Drottningtorget": {
@@ -10,48 +10,48 @@
         "worst": 17,
         "hitches": 0,
         "pixelRatio": 2,
-        "calls": 83,
-        "triangles": 170858
+        "calls": 61,
+        "triangles": 143716
       },
       "Brunnsparken": {
-        "fps": 60,
-        "p95": 16.8,
-        "slow": 0,
-        "worst": 17,
-        "hitches": 0,
-        "pixelRatio": 2,
-        "calls": 69,
-        "triangles": 228835
-      },
-      "Kungsportsplatsen": {
         "fps": 60,
         "p95": 16.7,
         "slow": 0,
         "worst": 17,
         "hitches": 0,
         "pixelRatio": 2,
-        "calls": 82,
-        "triangles": 208690
+        "calls": 52,
+        "triangles": 203439
+      },
+      "Kungsportsplatsen": {
+        "fps": 60,
+        "p95": 16.8,
+        "slow": 0,
+        "worst": 17,
+        "hitches": 0,
+        "pixelRatio": 2,
+        "calls": 62,
+        "triangles": 177198
       },
       "Järntorget": {
         "fps": 60,
-        "p95": 16.8,
+        "p95": 16.7,
         "slow": 0,
         "worst": 17,
         "hitches": 0,
         "pixelRatio": 2,
-        "calls": 90,
-        "triangles": 177203
+        "calls": 70,
+        "triangles": 151107
       },
       "Walking the inner city": {
         "fps": 60,
-        "p95": 16.8,
+        "p95": 16.7,
         "slow": 0,
         "worst": 17,
         "hitches": 0,
         "pixelRatio": 2,
-        "calls": 68,
-        "triangles": 145028
+        "calls": 52,
+        "triangles": 123010
       }
     },
     "phone": {
@@ -62,8 +62,8 @@
         "worst": 17,
         "hitches": 0,
         "pixelRatio": 1.5,
-        "calls": 49,
-        "triangles": 108483
+        "calls": 37,
+        "triangles": 84383
       },
       "Brunnsparken": {
         "fps": 60,
@@ -72,8 +72,8 @@
         "worst": 17,
         "hitches": 0,
         "pixelRatio": 1.5,
-        "calls": 37,
-        "triangles": 138172
+        "calls": 27,
+        "triangles": 121784
       },
       "Kungsportsplatsen": {
         "fps": 60,
@@ -82,47 +82,47 @@
         "worst": 17,
         "hitches": 0,
         "pixelRatio": 1.5,
-        "calls": 33,
-        "triangles": 124525
+        "calls": 23,
+        "triangles": 105765
       },
       "Järntorget": {
-        "fps": 60,
-        "p95": 16.7,
-        "slow": 0,
-        "worst": 17,
-        "hitches": 0,
-        "pixelRatio": 1.5,
-        "calls": 39,
-        "triangles": 106886
-      },
-      "Walking the inner city": {
         "fps": 60,
         "p95": 16.8,
         "slow": 0,
         "worst": 17,
         "hitches": 0,
         "pixelRatio": 1.5,
-        "calls": 32,
-        "triangles": 80376
+        "calls": 27,
+        "triangles": 91538
+      },
+      "Walking the inner city": {
+        "fps": 60,
+        "p95": 16.7,
+        "slow": 0,
+        "worst": 17,
+        "hitches": 0,
+        "pixelRatio": 1.5,
+        "calls": 25,
+        "triangles": 62130
       }
     }
   },
   "load": {
     "desktop": {
-      "downloadS": 0.12980000007152556,
-      "bytes": 904328,
+      "downloadS": 0.12110000002384186,
+      "bytes": 873500,
       "wasmBytes": 652517,
-      "wasmDoneS": 0.12980000007152556,
-      "compileS": 0.009600000023841858,
-      "readyS": 0.39720000004768374
+      "wasmDoneS": 0.12110000002384186,
+      "compileS": 0.015300000071525573,
+      "readyS": 0.4006000000238419
     },
     "phone": {
-      "downloadS": 4.515399999976158,
-      "bytes": 904328,
+      "downloadS": 4.374100000023842,
+      "bytes": 873500,
       "wasmBytes": 652517,
-      "wasmDoneS": 4.515399999976158,
-      "compileS": 3.586,
-      "readyS": 5.641799999952316
+      "wasmDoneS": 4.374100000023842,
+      "compileS": 3.4363000000715256,
+      "readyS": 5.479699999928474
     }
   }
 }

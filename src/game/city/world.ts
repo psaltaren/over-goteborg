@@ -4,9 +4,9 @@
 // by the open air's fog (the camera sees about 410 m). `World` itself is not imported: it brings the metro's map data
 // into the build. The names the scripts read are kept: `group`, `building`, `paused`, `warm`.
 
-import { Box3, Group, type InstancedMesh, type Material, type Mesh, type MeshBasicMaterial, type Object3D } from 'three';
+import { Box3, Group, type Mesh, type Object3D } from 'three';
 import type { Physics } from '../physics';
-import { sharedMaterials } from '../world/section';
+import { freeMemory } from '../world/section';
 import { CITY, cityTiles, PLAY, STREET_Y, type Rect } from './geo';
 import { Tiles } from './tiles';
 
@@ -182,15 +182,34 @@ export class CityWorld {
   }
 
   /**
+   * One step of a build left behind out of reach (the player walked away from it half done), so it is finished and can
+   * be taken down like the rest, rather than held half built for good. False when there is none.
+   */
+  private finishBehind(): boolean {
+    if (!this.building) this.building = this.paused.pop() ?? null;
+    const current = this.building;
+    if (!current) return false;
+    if (this.step(current.entry, current.steps)) this.building = this.paused.pop() ?? null;
+    return true;
+  }
+
+  /** Whether a build within `reach` of (`x`, `z`) is under way or set aside half done. */
+  private halfBuilt(x: number, z: number, reach: number): boolean {
+    return [this.building, ...this.paused].some((b) => b && away(b.entry.rect, x, z) < reach);
+  }
+
+  /**
    * Per frame: what lies within `MUST_REACH` is built now, whatever it takes; what lies within `NEAR_REACH` gets up to
-   * `budget` milliseconds of building; one step more toward anything within `BUILD_REACH`; then what is far is hidden.
+   * `budget` milliseconds of building; one step more toward anything within `BUILD_REACH`, or else of a build left
+   * behind; then what is far is hidden, and the windows are lit.
    */
   keepUp(x: number, z: number, budget = 6): void {
     while (this.buildNear(x, z, MUST_REACH));
     const until = performance.now() + budget;
     while (performance.now() < until && this.buildNear(x, z, NEAR_REACH));
-    this.buildNear(x, z, BUILD_REACH);
+    if (!this.buildNear(x, z, BUILD_REACH)) this.finishBehind();
     this.show(x, z);
+    this.tiles.lightWindows();
   }
 
   /** Builds everything near (`x`, `z`) whose file is here, right away (after a teleport). */
@@ -206,13 +225,14 @@ export class CityWorld {
 
   /**
    * Builds everything near (`x`, `z`), waiting for the squares' files to arrive (behind the loading screen, or after a
-   * teleport): at most `wait` milliseconds, so a city offline still opens, bare.
+   * teleport): at most `wait` milliseconds, so a city offline still opens, bare. A build left half done far away (the
+   * place teleported from) is not waited for: `keepUp` finishes it in the frames to come.
    */
   async settle(x: number, z: number, wait = 15_000): Promise<void> {
     const until = performance.now() + wait;
     for (;;) {
       this.ensureBuilt(x, z);
-      if ((!this.missing(x, z, NEAR_REACH) && !this.building) || performance.now() > until) return;
+      if ((!this.missing(x, z, NEAR_REACH) && !this.halfBuilt(x, z, NEAR_REACH)) || performance.now() > until) return;
       await new Promise((r) => setTimeout(r, 20));
     }
   }
@@ -234,19 +254,4 @@ export class CityWorld {
       child.visible = away(extent, x, z) < SHOW_REACH;
     }
   }
-}
-
-/**
- * Frees the GPU buffers and textures of a group taken out of the world (as `World` does). The shared world materials
- * and their textures stay; anything shared that is freed here is simply uploaded again by whatever still uses it.
- */
-function freeMemory(group: Object3D): void {
-  const shared = new Set<Material>(sharedMaterials());
-  group.traverse((o) => {
-    const mesh = o as Mesh;
-    mesh.geometry?.dispose();
-    if ((o as InstancedMesh).isInstancedMesh) (o as InstancedMesh).dispose();
-    const materials = Array.isArray(mesh.material) ? mesh.material : mesh.material ? [mesh.material] : [];
-    for (const m of materials) if (!shared.has(m)) (m as MeshBasicMaterial).map?.dispose();
-  });
 }

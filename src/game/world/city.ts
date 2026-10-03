@@ -8,8 +8,6 @@ import { facadeTexture, oldFacadeTexture } from './facades';
 import { addTrack } from './parts';
 import type { Section } from './section';
 
-export { oldFacadeTexture };
-
 /**
  * The inner city by the water, where the red and green lines come out of the
  * rock between T-Centralen and Slussen and cross to Gamla stan on low

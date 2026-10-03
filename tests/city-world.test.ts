@@ -65,3 +65,30 @@ test('waits for a file on the way, and builds once it is here', async () => {
   await world.settle(500, -300, 500);
   expect(counts.builds).toBe(1);
 });
+
+test('finishes a build the player walked away from half done, and does not wait for it where they went', async () => {
+  const world = new CityWorld(new Physics(), () => 0);
+  const counts = { steps: 0, done: 0, released: 0 };
+  world.later({ x0: 490, x1: 510, z0: -310, z1: -290 }, function* () {
+    for (let k = 0; k < 5; k++) {
+      counts.steps++;
+      yield;
+    }
+    const mesh = new Mesh(new BoxGeometry(20, 20, 20), new MeshBasicMaterial());
+    mesh.position.set(500, 0, -300);
+    yield* world.add(mesh);
+    counts.done++;
+  }, () => counts.released++);
+  // 490 m off: past what is built at once, but within reach of a step a frame (after the city's own squares, nearer).
+  for (let k = 0; k < 100 && !counts.steps; k++) world.keepUp(500, 200);
+  expect(counts.steps).toBe(1);
+  // Then far off: nothing near is missing, so settling there does not wait out the half-done build.
+  const start = performance.now();
+  await world.settle(500, 1500, 5000);
+  expect(performance.now() - start).toBeLessThan(1000);
+  // The frames there finish it, and take it down again.
+  for (let k = 0; k < 50 && !counts.released; k++) world.keepUp(500, 1500);
+  expect(counts.done).toBe(1);
+  expect(counts.released).toBe(1);
+  expect(world.building).toBeNull();
+});

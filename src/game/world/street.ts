@@ -5,7 +5,7 @@ import { mix, rgb, type RGB } from '../gfx/color';
 import { fbm3 } from '../gfx/noise';
 import { HALL_LEN, STREET } from '../layout';
 import type { Physics } from '../physics';
-import { oldFacadeTexture } from './city';
+import { oldFacadeTexture } from './facades';
 import type { Section } from './section';
 import { place, textSign } from './signage';
 

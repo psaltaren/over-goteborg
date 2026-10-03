@@ -1,4 +1,4 @@
-import { ALIGHTING_WARNING_PATH, ANNOUNCEMENT_SIGNAL_PATH, RECORDED_ANNOUNCEMENTS, RECORDINGS, SIGNAL_SPEECH_GAP, DOOR_WARNING_PATH, WARNING_PAUSE, type RecordedAnnouncement } from './announcementSignal';
+import { ALIGHTING_WARNING_PATH, ANNOUNCEMENT_SIGNAL_PATH, RECORDINGS, SIGNAL_SPEECH_GAP, DOOR_WARNING_PATH, WARNING_PAUSE, type RecordedAnnouncement, type Recording } from './announcementSignal';
 import sv from './i18n/sv.json';
 import { RIDE_LAYOUT } from './layout';
 import { DOOR_SLIDE, DOOR_WARNING } from './timetable';
@@ -57,6 +57,9 @@ export class Audio {
   private doorBuffer: AudioBuffer | null = null;
   private warningBuffer: AudioBuffer | null = null;
   private warningLoad: Promise<AudioBuffer | null> | null = null;
+
+  /** @param recordings the recorded calls by key (`stationRecordings.ts`): none, and every call is spoken. */
+  constructor(private readonly recordings: Readonly<Record<string, Recording>> = {}) {}
 
   start(): void {
     if (this.ctx) {
@@ -177,8 +180,9 @@ export class Audio {
     const cached = this.recordedLoads.get(key);
     if (cached) return cached;
     const ctx = this.ctx;
-    if (!ctx) return Promise.resolve(null);
-    const { parts } = RECORDED_ANNOUNCEMENTS[key];
+    const known = this.recordings[key];
+    if (!ctx || !known) return Promise.resolve(null);
+    const { parts } = known;
     const load = Promise.all(parts.map((part) => (typeof part === 'string' ? this.loadClip(part) : Promise.resolve(part)))).then((clips) => {
       if (clips.some((clip) => !clip)) return null;
       // Numbers are pauses, in seconds of silence.
@@ -478,7 +482,7 @@ export class Audio {
     const playRecording = (buffer: AudioBuffer | null) => {
       if (generation !== this.announcementGeneration || this.muted || !this.ctx) return;
       if (!buffer) { synthesized(); return; }
-      playClip(buffer, 0, buffer.duration, RECORDED_ANNOUNCEMENTS[recording].speechDelay, onStart, afterSpeech);
+      playClip(buffer, 0, buffer.duration, this.recordings[recording]?.speechDelay ?? 0, onStart, afterSpeech);
     };
     const buffer = this.recordedBuffers.get(recording);
     if (buffer) playRecording(buffer);

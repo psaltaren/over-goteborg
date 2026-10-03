@@ -5,8 +5,11 @@ import {
   DoubleSide,
   Float32BufferAttribute,
   Group,
+  type InstancedMesh,
+  type Material,
   Mesh,
   MeshBasicMaterial,
+  type Object3D,
   Points,
   PointsMaterial,
   type Texture,
@@ -61,6 +64,23 @@ export function sharedMaterials(): MeshBasicMaterial[] {
   // Only those already made: asking must not make them.
   const art = [...artMaterials.values(), ...openArt.values()].filter((m) => !m.userData.owned);
   return [...(shared ? Object.values(shared) : []), ...(open ? [open.detail, open.floor, open.tactile] : []), ...art];
+}
+
+/**
+ * Frees the GPU buffers and textures of a group taken out of the world. The
+ * shared world materials and their textures stay; anything shared that is
+ * freed here is simply uploaded again by whatever still uses it.
+ */
+export function freeMemory(group: Object3D): void {
+  const shared = new Set<Material>(sharedMaterials());
+  group.traverse((o) => {
+    const mesh = o as Mesh;
+    mesh.geometry?.dispose();
+    // An instanced mesh keeps its instances' matrices in buffers of its own (an escalator's treads).
+    if ((o as InstancedMesh).isInstancedMesh) (o as InstancedMesh).dispose();
+    const materials = Array.isArray(mesh.material) ? mesh.material : mesh.material ? [mesh.material] : [];
+    for (const m of materials) if (!shared.has(m)) (m as MeshBasicMaterial).map?.dispose();
+  });
 }
 
 /** How bright the open air is, 0 to 1 (see `Sky`). */

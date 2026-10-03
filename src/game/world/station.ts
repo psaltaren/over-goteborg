@@ -447,9 +447,6 @@ export function mapLayout(line: LineDef, w: number, h: number): Array<{ x: numbe
   }));
 }
 
-/** The HUD map's size and its stations' places (in `networkMap.ts`, which the HUD imports without the world). */
-export { NETWORK_MAP, networkMapLayout } from '../networkMap';
-
 function lineMap(line: LineDef, here: number): CanvasSign {
   return createCanvasSign(1024, 448, (ctx, w, h) => {
     ctx.fillStyle = '#f4f2ec';

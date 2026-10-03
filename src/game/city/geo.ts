@@ -98,7 +98,7 @@ export const PLACES: Record<string, Pt> = Object.fromEntries(([
   ['Drottningtorget', 57.707731, 11.973195],
   ['Nils Ericsonsplatsen', 57.709126, 11.971084],
   ['Lilla Bommen', 57.709186, 11.96676],
-  ['Brunnsparken', 57.70683, 11.968201],
+  ['Brunnsparken', 57.70708, 11.96845],
   ['Kungsportsplatsen', 57.704049, 11.969708],
   ['Domkyrkan', 57.704278, 11.963704],
   ['Grönsakstorget', 57.702526, 11.964342],

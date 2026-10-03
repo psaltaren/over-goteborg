@@ -1,5 +1,5 @@
 import { escalatorHeight, escalatorRun, escalatorSlope, onEscalatorTread } from '../escalatorMotion';
-import { Box3, Group, Vector3, type InstancedMesh, type Material, type Mesh, type MeshBasicMaterial, type Object3D } from 'three';
+import { Box3, Group, Vector3, type Mesh, type Object3D } from 'three';
 import { rgb } from '../gfx/color';
 import { withoutSigns } from '../gfx/signs';
 import {
@@ -39,7 +39,7 @@ import { LOADING_SLICE_MS, nextFrame } from '../frames';
 import type { Physics } from '../physics';
 import { addTrack, buildConnector, buildSiding, buildTubes, buildTurnback, connectorOut, tubeSteps, PAINT, type TubePlace } from './parts';
 import { buildGraffiti } from './graffiti';
-import { Section, sharedMaterials } from './section';
+import { freeMemory, Section } from './section';
 import { shifted } from './shifted';
 import { Walkway } from './walkway';
 import { buildStation, stationSteps, underHall, type HallInfo, type ServiceDoor, type StationInfo } from './station';
@@ -1140,23 +1140,6 @@ export class World {
     for (const s of this.stations) if (Math.abs(s.cx - x) < Math.abs(best.cx - x)) best = s;
     return best;
   }
-}
-
-/**
- * Frees the GPU buffers and textures of a group taken out of the world. The
- * shared world materials and their textures stay; anything shared that is
- * freed here is simply uploaded again by whatever still uses it.
- */
-function freeMemory(group: Object3D): void {
-  const shared = new Set<Material>(sharedMaterials());
-  group.traverse((o) => {
-    const mesh = o as Mesh;
-    mesh.geometry?.dispose();
-    // An instanced mesh keeps its instances' matrices in buffers of its own (an escalator's treads).
-    if ((o as InstancedMesh).isInstancedMesh) (o as InstancedMesh).dispose();
-    const materials = Array.isArray(mesh.material) ? mesh.material : mesh.material ? [mesh.material] : [];
-    for (const m of materials) if (!shared.has(m)) (m as MeshBasicMaterial).map?.dispose();
-  });
 }
 
 /**

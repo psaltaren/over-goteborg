@@ -51,15 +51,12 @@ const FOG = { near: 80, far: 410 };
 /** Where the game starts: on Drottningtorget, before Centralstationen, looking down toward Brunnsparken. */
 const START: { at: Pt; toward: Pt } = { at: PLACES.Drottningtorget, toward: PLACES.Brunnsparken };
 
-/** What the landing page passes (as to the metro's game: `main.ts`); the tour, a life and a station are the metro's. */
+/** What the landing page passes (`main.ts`). */
 export interface GameOptions {
-  showcase?: boolean;
   /** Physics can download while the game module itself is still loading. */
   physicsReady?: Promise<Rapier>;
   /** Start where the player last stood, if that was in the city. */
   resume?: boolean;
-  station?: string;
-  life?: boolean;
   /** When the player clicked to start, `performance.now()`, so the time to playing counts the download too. */
   since?: number;
 }
@@ -176,9 +173,10 @@ export async function startGame(root: HTMLElement, options: GameOptions = {}): P
   await physicsUp;
   await setProgress(0.2);
   const hud = new Hud(root, null, touchMode);
-  // What the pause menu and the HUD have for the metro has no use in the city yet.
-  for (const b of [hud.driverButton, hud.realButton, hud.eraButton, ...hud.crowdButtons, ...hud.motionButtons]) b.hidden = true;
-  root.querySelector<HTMLElement>('.hud-map')?.setAttribute('hidden', '');
+  // What the pause menu and the HUD have for the metro has no use in the city yet: its modes (driving, the tour, a
+  // life, the network, the screensaver), its discovery book, other players and people's voices.
+  for (const b of [hud.realButton, hud.bookButton, hud.ghostButton, hud.voiceButton, ...hud.crowdButtons, ...hud.motionButtons]) b.hidden = true;
+  for (const el of root.querySelectorAll<HTMLElement>('.hud-map, .pause-modes')) el.hidden = true;
   hud.setLine('Göteborg');
   root.querySelector('.hud')?.classList.add('is-city');
   const audio = new Audio();
@@ -481,6 +479,8 @@ export async function startGame(root: HTMLElement, options: GameOptions = {}): P
     }
   }
 
+  /** `window.__us` under `?debug`, set once the loading card is down: a script that waits for it finds the game ready. */
+  let debugApi: object | null = null;
   if (debug) {
     // Optional camera pose, for screenshots: ?debug&x=..&y=..&z=..&yaw=..&pitch=..
     const num = (k: string) => (params.has(k) ? Number(params.get(k)) : undefined);
@@ -488,92 +488,91 @@ export async function startGame(root: HTMLElement, options: GameOptions = {}): P
     if (px !== undefined || py !== undefined || pz !== undefined) player.teleport(new Vector3(px ?? player.feet.x, py ?? player.feet.y, pz ?? player.feet.z), num('yaw'));
     const pp = num('pitch');
     if (pp !== undefined) player.pitch = pp;
-    Object.assign(window, {
-      __us: {
-        physics,
-        player,
-        world,
-        weather,
-        warnings,
-        renderer,
-        /** No trams yet: the measuring scripts walk the trains they are given. */
-        services: [] as unknown[],
-        get time() {
-          return time;
-        },
-        set time(t: number) {
-          time = t;
-        },
-        jump(t: number) {
-          time = t;
-        },
-        /** Stands the player on a named place (`PLACES`), looking toward another, with what is near built. */
-        place(name: string, toward?: string) {
-          const at = PLACES[name];
-          if (!at) throw new Error(`No place called ${name}: ${Object.keys(PLACES).join(', ')}`);
-          const look = toward ? PLACES[toward] : null;
-          player.teleport(new Vector3(at[0], STREET_Y + 0.05, at[1]), look ? yawToward(at, look) : undefined);
-          world.ensureBuilt(at[0], at[1]);
-          return this.info();
-        },
-        /** As `place`, and waits until the squares round it are fetched and built (the measuring scripts' scenes). */
-        async go(name: string, toward?: string) {
-          this.place(name, toward);
-          await world.settle(player.feet.x, player.feet.z);
-          return this.info();
-        },
-        step(seconds = 1, rate = 30) {
-          manualDt = 1 / rate;
-          try { for (let i = 0; i < seconds * rate; i++) frame(); } finally { manualDt = null; }
-          return this.info();
-        },
-        info() {
-          return { renderer: renderer.info.render, memory: renderer.info.memory, feet: player.feet.toArray(), where: placeNear(player.feet.x, player.feet.z), clock: formatClock(time), building: !!world.building, missing: world.missing(player.feet.x, player.feet.z) };
-        },
-        /** Times frames, logic and render apart (the render waited for with a one-pixel read). */
-        perf(seconds = 3, rate = 30) {
-          const gl = renderer.getContext();
-          const pixel = new Uint8Array(4);
-          const render = renderer.render.bind(renderer);
-          let renderMs = 0;
-          renderer.render = (s, c) => {
-            const t = performance.now();
-            render(s, c);
-            gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, pixel);
-            renderMs += performance.now() - t;
-          };
-          const t0 = performance.now();
-          try { this.step(seconds, rate); } finally { renderer.render = render; }
-          const frames = seconds * rate;
-          const total = performance.now() - t0;
-          const round = (v: number) => Math.round(v * 100) / 100;
-          return {
-            frameMs: round(total / frames), logicMs: round((total - renderMs) / frames), renderMs: round(renderMs / frames),
-            calls: renderer.info.render.calls, triangles: renderer.info.render.triangles,
-            geometries: renderer.info.memory.geometries, textures: renderer.info.memory.textures, programs: renderer.info.programs?.length ?? 0,
-          };
-        },
-        /** The slowest recent frames (over 40 ms), with how long each part of them took. */
-        slowFrames(clear = false) {
-          const out = [...slowLog];
-          if (clear) slowLog.length = 0;
-          return out;
-        },
-        /** Back to full resolution, as at the start, for timing a scene. */
-        resetResolution() {
-          resolution.reset();
-          resize();
-          return renderer.getPixelRatio();
-        },
-        /** How long each part of the frame takes, in milliseconds per frame, over `seconds` of frames run by hand. */
-        laps(seconds = 2, rate = 15) {
-          laps.clear();
-          this.step(seconds, rate);
-          const frames = seconds * rate;
-          return Object.fromEntries([...laps].map(([k, v]) => [k, Math.round((v / frames) * 100) / 100]));
-        },
+    const api = {
+      physics,
+      player,
+      world,
+      weather,
+      warnings,
+      renderer,
+      /** No trams yet: the measuring scripts walk the trains they are given. */
+      services: [] as unknown[],
+      get time() {
+        return time;
       },
-    });
+      set time(t: number) {
+        time = t;
+      },
+      jump(t: number) {
+        time = t;
+      },
+      /** Stands the player on a named place (`PLACES`), looking toward another, with what is near built. */
+      place(name: string, toward?: string) {
+        const at = PLACES[name];
+        if (!at) throw new Error(`No place called ${name}: ${Object.keys(PLACES).join(', ')}`);
+        const look = toward ? PLACES[toward] : null;
+        player.teleport(new Vector3(at[0], STREET_Y + 0.05, at[1]), look ? yawToward(at, look) : undefined);
+        world.ensureBuilt(at[0], at[1]);
+        return this.info();
+      },
+      /** As `place`, and waits until the squares round it are fetched and built (the measuring scripts' scenes). */
+      async go(name: string, toward?: string) {
+        this.place(name, toward);
+        await world.settle(player.feet.x, player.feet.z);
+        return this.info();
+      },
+      step(seconds = 1, rate = 30) {
+        manualDt = 1 / rate;
+        try { for (let i = 0; i < seconds * rate; i++) frame(); } finally { manualDt = null; }
+        return this.info();
+      },
+      info() {
+        return { renderer: renderer.info.render, memory: renderer.info.memory, feet: player.feet.toArray(), where: placeNear(player.feet.x, player.feet.z), clock: formatClock(time), building: !!world.building, missing: world.missing(player.feet.x, player.feet.z) };
+      },
+      /** Times frames, logic and render apart (the render waited for with a one-pixel read). */
+      perf(seconds = 3, rate = 30) {
+        const gl = renderer.getContext();
+        const pixel = new Uint8Array(4);
+        const render = renderer.render.bind(renderer);
+        let renderMs = 0;
+        renderer.render = (s, c) => {
+          const t = performance.now();
+          render(s, c);
+          gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, pixel);
+          renderMs += performance.now() - t;
+        };
+        const t0 = performance.now();
+        try { this.step(seconds, rate); } finally { renderer.render = render; }
+        const frames = seconds * rate;
+        const total = performance.now() - t0;
+        const round = (v: number) => Math.round(v * 100) / 100;
+        return {
+          frameMs: round(total / frames), logicMs: round((total - renderMs) / frames), renderMs: round(renderMs / frames),
+          calls: renderer.info.render.calls, triangles: renderer.info.render.triangles,
+          geometries: renderer.info.memory.geometries, textures: renderer.info.memory.textures, programs: renderer.info.programs?.length ?? 0,
+        };
+      },
+      /** The slowest recent frames (over 40 ms), with how long each part of them took. */
+      slowFrames(clear = false) {
+        const out = [...slowLog];
+        if (clear) slowLog.length = 0;
+        return out;
+      },
+      /** Back to full resolution, as at the start, for timing a scene. */
+      resetResolution() {
+        resolution.reset();
+        resize();
+        return renderer.getPixelRatio();
+      },
+      /** How long each part of the frame takes, in milliseconds per frame, over `seconds` of frames run by hand. */
+      laps(seconds = 2, rate = 15) {
+        laps.clear();
+        this.step(seconds, rate);
+        const frames = seconds * rate;
+        return Object.fromEntries([...laps].map(([k, v]) => [k, Math.round((v / frames) * 100) / 100]));
+      },
+    };
+    debugApi = api;
   }
 
   // Build what lies round the player before the card comes down, waiting for the squares' files.
@@ -592,6 +591,7 @@ export async function startGame(root: HTMLElement, options: GameOptions = {}): P
   showProgress();
   loading.classList.add('is-done');
   window.setTimeout(() => loading.remove(), debug ? 0 : 400);
+  if (debugApi) Object.assign(window, { __us: debugApi });
   last = performance.now();
 
   // A frame that throws would throw again on every frame after it: the loop stops, the error is reported

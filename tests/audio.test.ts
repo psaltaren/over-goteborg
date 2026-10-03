@@ -1,5 +1,6 @@
 import { afterEach, expect, spyOn, test } from 'bun:test';
-import { RECORDED_ANNOUNCEMENTS, SIGNAL_SPEECH_GAP, WARNING_PAUSE } from '../src/game/announcementSignal';
+import { SIGNAL_SPEECH_GAP, WARNING_PAUSE } from '../src/game/announcementSignal';
+import { RECORDED_ANNOUNCEMENTS } from '../src/game/stationRecordings';
 import { Audio, synthChime, synthDoorWarning } from '../src/game/audio';
 import { DOOR_SLIDE, DOOR_WARNING } from '../src/game/timetable';
 
@@ -39,7 +40,7 @@ function fixture() {
   const recordingPlays: number[][] = [];
   const recordingSources: Array<{ stop(): void; onended?: () => void }> = [];
   let recordingStops = 0;
-  const audio = new Audio();
+  const audio = new Audio(RECORDED_ANNOUNCEMENTS);
   Object.assign(audio, { ctx: { currentTime: 0, createOscillator: node, createGain: node, createBufferSource: () => ({ ...node(), buffer: null, onended: undefined as (() => void) | undefined, start(...args: number[]) { if (this.buffer === signalBuffer) signals++; else if (this.buffer === recordedBuffer) { recordingPlays.push(args); recordingSources.push(this); } else if (this.buffer === warningBuffer) { warningPlays.push(args); warningSources.push(this); } else impacts++; }, stop() { if (this.buffer === recordedBuffer) recordingStops++; else if (this.buffer === warningBuffer) warningStops++; } }), createBiquadFilter: node }, impactNoise: {}, signalBuffer, recordedBuffers: new Map(Object.keys(RECORDED_ANNOUNCEMENTS).map(key => [key, recordedBuffer])), warningBuffer, master: node(), voice: { lang: 'sv-SE' } });
   return { audio, utterances, recordingPlays, recordingSources, warningPlays, warningSources, get warningStops() { return warningStops; }, get recordingStops() { return recordingStops; }, get signals() { return signals; }, get queuedDelay() { return queuedDelay; }, get impacts() { return impacts; }, flush: () => queued?.(), get queued() { return queued; }, get cancels() { return cancels; } };
 }

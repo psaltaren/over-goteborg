@@ -11,8 +11,6 @@ import { addTrack, PAINT } from './parts';
 import type { Section } from './section';
 import { archHole, wallWithHoles, type ProfilePoint } from './shapes';
 
-export { facadeTexture };
-
 /**
  * The open air: most of the red and green lines' suburban stretches run on
  * the surface. A fenced track bed on ballast, grass beyond, birches and pines,

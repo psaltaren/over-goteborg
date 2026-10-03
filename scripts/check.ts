@@ -19,7 +19,7 @@
 // floor but costs more than the noise between runs. `--accept` keeps the floor. A scene that misses on its frame times
 // is timed once more and fails only if it misses again, and a machine already busy before the timing is noted.
 
-import { existsSync } from 'node:fs';
+import { existsSync, rmSync } from 'node:fs';
 import { cpus, loadavg } from 'node:os';
 import { join } from 'node:path';
 import type { FpsReport, Result } from './fps';
@@ -171,13 +171,16 @@ if ((PERF || SMOKE) && !failures.length) {
   const stopDev = await serve('dev server', ['bun', 'scripts/dev.ts', '--port', String(devPort), '--strictPort'], devUrl);
   try {
     const memJson = join(SCRATCH, 'mem.json');
+    // An earlier run's report must not stand in for this one's.
+    rmSync(memJson, { force: true });
     const memArgs = ['bun', 'scripts/mem.ts', '--url', devUrl, '--json', memJson, ...(SMOKE ? ['--scene', SMOKE_LEAKS, '--rounds', '3'] : [])];
     if (!(await run('memory leaks', memArgs))) fail('memory leaks (see above)');
     if (existsSync(memJson)) last.mem = await Bun.file(memJson).json();
     // A filter that matches no scenario would measure nothing and pass.
-    if (SMOKE && !Object.keys(last.mem ?? {}).some((n) => n.includes(SMOKE_LEAKS))) fail(`no leak scenario matches "${SMOKE_LEAKS}" (SMOKE_LEAKS in scripts/check.ts)`);
+    if (SMOKE && !Object.keys(last.mem ?? {}).some((n) => n.toLowerCase().includes(SMOKE_LEAKS.toLowerCase()))) fail(`no leak scenario matches "${SMOKE_LEAKS}" (SMOKE_LEAKS in scripts/check.ts)`);
 
     const fpsJson = join(SCRATCH, 'fps.json');
+    rmSync(fpsJson, { force: true });
     const fpsArgs = ['bun', 'scripts/fps.ts', '--url', devUrl, '--json', fpsJson, ...(SMOKE ? ['--only', 'phone', '--scene', SMOKE_SCENES, '--seconds', '5'] : []), ...(DEVICE ? ['--device'] : [])];
     const busy = machineBusy();
     if (busy) console.log(`\n  NOTE ${busy}: frame times may suffer from it, not from the game`);

@@ -44,7 +44,8 @@ export const SCENES: Scene[] = [
   { name: 'Kungsportsplatsen', set: "__us.go('Kungsportsplatsen', 'Domkyrkan')" },
   { name: 'Järntorget', set: "__us.go('Järntorget', 'Grönsakstorget')" },
   // Through the city at a run and more, along x, where the squares are built as you come: the stutter test.
-  { name: 'Walking the inner city', set: "__us.go('Brunnsparken', 'Domkyrkan')", travel: 22 },
+  // A fixed length, so the quick check walks as far as the full one and ends where the baseline was measured.
+  { name: 'Walking the inner city', set: "__us.go('Brunnsparken', 'Domkyrkan')", travel: 22, seconds: 12 },
 ];
 
 interface Profile {

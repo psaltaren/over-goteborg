@@ -31,7 +31,7 @@ import { daylight, OpenAirWeather, Weather } from '../weather';
 import { setDaylight } from '../world/section';
 import { Sky } from '../world/sky';
 import { PLACES, placeNear, PLAY, STREET_Y, yawToward, type Pt } from './geo';
-import { CityWorld } from './world';
+import { BUILD_REACH, CityWorld } from './world';
 
 /** Seconds the build screen stays up at least, so its text can be read. */
 const LOADING_MIN = 4.5;
@@ -515,10 +515,14 @@ export async function startGame(root: HTMLElement, options: GameOptions = {}): P
         world.ensureBuilt(at[0], at[1]);
         return this.info();
       },
-      /** As `place`, and waits until the squares round it are fetched and built (the measuring scripts' scenes). */
+      /**
+       * As `place`, from a clean slate: everything built is taken down, and everything within reach of the place is
+       * fetched and built before it returns. The measuring scripts' scenes, the same whichever scene ran before.
+       */
       async go(name: string, toward?: string) {
+        world.clear();
         this.place(name, toward);
-        await world.settle(player.feet.x, player.feet.z);
+        await world.settle(player.feet.x, player.feet.z, 30_000, BUILD_REACH);
         return this.info();
       },
       step(seconds = 1, rate = 30) {

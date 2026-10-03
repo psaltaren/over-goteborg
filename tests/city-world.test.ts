@@ -92,3 +92,15 @@ test('finishes a build the player walked away from half done, and does not wait 
   expect(counts.released).toBe(1);
   expect(world.building).toBeNull();
 });
+
+test('clears to a clean slate, taking down what is built and finishing what is half built first', () => {
+  const { world, counts } = withBox(500, -300);
+  world.ensureBuilt(500, -300);
+  expect(world.group.children.length).toBe(1);
+  world.clear();
+  expect(world.group.children.length).toBe(0);
+  expect(counts.released).toBe(1);
+  expect(world.building).toBeNull();
+  world.ensureBuilt(500, -300);
+  expect(counts.builds).toBe(2);
+});

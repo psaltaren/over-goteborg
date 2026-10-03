@@ -23,7 +23,7 @@ interface Lazy {
 }
 
 /** Built when the player comes this close: the fog's far edge, and some to spare for walking on. */
-const BUILD_REACH = 600;
+export const BUILD_REACH = 600;
 /** Taken down and freed this far away, to be built again on the way back. */
 const EVICT_REACH = 900;
 /** Hidden this far away: past the fog, so nothing seen is ever hidden. */
@@ -109,10 +109,10 @@ export class CityWorld {
     }
   }
 
-  /** Takes down what was built far from (`x`, `z`), frees its memory and queues it to be built again. */
-  private evict(x: number, z: number): void {
+  /** Takes down what was built further than `reach` from (`x`, `z`), frees its memory and queues it to be built again. */
+  private evict(x: number, z: number, reach = EVICT_REACH): void {
     for (const entry of [...this.built]) {
-      if (this.building?.entry === entry || this.paused.some((p) => p.entry === entry) || away(entry.rect, x, z) < EVICT_REACH) continue;
+      if (this.building?.entry === entry || this.paused.some((p) => p.entry === entry) || away(entry.rect, x, z) < reach) continue;
       for (const group of entry.groups) {
         this.group.remove(group);
         this.extents.delete(group);
@@ -212,10 +212,19 @@ export class CityWorld {
     this.tiles.lightWindows();
   }
 
-  /** Builds everything near (`x`, `z`) whose file is here, right away (after a teleport). */
-  ensureBuilt(x: number, z: number): void {
-    while (this.buildNear(x, z, NEAR_REACH));
+  /** Builds everything within `reach` of (`x`, `z`) whose file is here, right away (after a teleport). */
+  ensureBuilt(x: number, z: number, reach = NEAR_REACH): void {
+    while (this.buildNear(x, z, reach));
     this.show(x, z);
+  }
+
+  /**
+   * Takes down everything built, finishing first what is half built: a clean slate before a teleport, so that what is
+   * built round the place (`settle` with `BUILD_REACH`) is the same whichever place came before (the measuring scenes).
+   */
+  clear(): void {
+    while (this.finishBehind());
+    this.evict(0, 0, 0);
   }
 
   /** How many things within `reach` of (`x`, `z`) are not built yet: waiting for a file, or not started. */
@@ -224,15 +233,15 @@ export class CityWorld {
   }
 
   /**
-   * Builds everything near (`x`, `z`), waiting for the squares' files to arrive (behind the loading screen, or after a
-   * teleport): at most `wait` milliseconds, so a city offline still opens, bare. A build left half done far away (the
+   * Builds everything within `reach` of (`x`, `z`), waiting for the squares' files to arrive (behind the loading screen,
+   * or after a teleport): at most `wait` milliseconds, so a city offline still opens, bare. A build left half done far away (the
    * place teleported from) is not waited for: `keepUp` finishes it in the frames to come.
    */
-  async settle(x: number, z: number, wait = 15_000): Promise<void> {
+  async settle(x: number, z: number, wait = 15_000, reach = NEAR_REACH): Promise<void> {
     const until = performance.now() + wait;
     for (;;) {
-      this.ensureBuilt(x, z);
-      if ((!this.missing(x, z, NEAR_REACH) && !this.halfBuilt(x, z, NEAR_REACH)) || performance.now() > until) return;
+      this.ensureBuilt(x, z, reach);
+      if ((!this.missing(x, z, reach) && !this.halfBuilt(x, z, reach)) || performance.now() > until) return;
       await new Promise((r) => setTimeout(r, 20));
     }
   }

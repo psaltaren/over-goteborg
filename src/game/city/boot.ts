@@ -136,6 +136,8 @@ export async function startGame(root: HTMLElement, options: GameOptions = {}): P
     console.warn('No trams:', err);
     return null;
   });
+  // The squares lay the tracks in their streets, and wait for them.
+  void tramsUp.then((data) => world.tiles.setTracks(data?.links ?? null));
   const sky = new Sky();
   scene.add(sky.mesh);
   await setProgress(0.1);

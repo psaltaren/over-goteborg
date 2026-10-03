@@ -1,9 +1,49 @@
 {
-  "at": "2026-10-03T21:15:29.830Z",
-  "commit": "1f6d745",
+  "at": "2026-10-03T22:47:26.842Z",
+  "commit": "be8b8e9",
   "fps": {
     "desktop": {
       "Drottningtorget": {
+        "fps": 60,
+        "p95": 16.7,
+        "slow": 0,
+        "worst": 17,
+        "hitches": 0,
+        "pixelRatio": 2,
+        "calls": 75,
+        "triangles": 212518
+      },
+      "Brunnsparken": {
+        "fps": 60,
+        "p95": 16.7,
+        "slow": 0,
+        "worst": 17,
+        "hitches": 0,
+        "pixelRatio": 2,
+        "calls": 67,
+        "triangles": 266079
+      },
+      "Kungsportsplatsen": {
+        "fps": 60,
+        "p95": 16.8,
+        "slow": 0,
+        "worst": 17,
+        "hitches": 0,
+        "pixelRatio": 2,
+        "calls": 72,
+        "triangles": 235088
+      },
+      "Järntorget": {
+        "fps": 60,
+        "p95": 16.7,
+        "slow": 0,
+        "worst": 17,
+        "hitches": 0,
+        "pixelRatio": 2,
+        "calls": 84,
+        "triangles": 189341
+      },
+      "Trams at Drottningtorget": {
         "fps": 60,
         "p95": 16.8,
         "slow": 0,
@@ -11,47 +51,17 @@
         "hitches": 0,
         "pixelRatio": 2,
         "calls": 70,
-        "triangles": 192028
+        "triangles": 167150
       },
-      "Brunnsparken": {
-        "fps": 60,
-        "p95": 16.7,
-        "slow": 0,
-        "worst": 17,
-        "hitches": 0,
-        "pixelRatio": 2,
-        "calls": 61,
-        "triangles": 254215
-      },
-      "Kungsportsplatsen": {
-        "fps": 60,
-        "p95": 16.7,
-        "slow": 0,
-        "worst": 17,
-        "hitches": 0,
-        "pixelRatio": 2,
-        "calls": 71,
-        "triangles": 226328
-      },
-      "Järntorget": {
+      "Riding a tram": {
         "fps": 60,
         "p95": 16.8,
         "slow": 0,
         "worst": 17,
         "hitches": 0,
         "pixelRatio": 2,
-        "calls": 79,
-        "triangles": 174753
-      },
-      "Trams at Drottningtorget": {
-        "fps": 60,
-        "p95": 16.7,
-        "slow": 0,
-        "worst": 17,
-        "hitches": 0,
-        "pixelRatio": 2,
-        "calls": 65,
-        "triangles": 146874
+        "calls": 85,
+        "triangles": 244885
       },
       "Walking the inner city": {
         "fps": 60,
@@ -60,8 +70,8 @@
         "worst": 17,
         "hitches": 0,
         "pixelRatio": 2,
-        "calls": 61,
-        "triangles": 153740
+        "calls": 63,
+        "triangles": 162534
       }
     },
     "phone": {
@@ -72,8 +82,8 @@
         "worst": 17,
         "hitches": 0,
         "pixelRatio": 1.5,
-        "calls": 46,
-        "triangles": 128515
+        "calls": 50,
+        "triangles": 148789
       },
       "Brunnsparken": {
         "fps": 60,
@@ -82,28 +92,28 @@
         "worst": 17,
         "hitches": 0,
         "pixelRatio": 1.5,
-        "calls": 36,
-        "triangles": 152548
+        "calls": 42,
+        "triangles": 164412
       },
       "Kungsportsplatsen": {
         "fps": 60,
-        "p95": 16.7,
+        "p95": 16.8,
         "slow": 0,
         "worst": 17,
         "hitches": 0,
         "pixelRatio": 1.5,
-        "calls": 32,
-        "triangles": 137353
+        "calls": 35,
+        "triangles": 146371
       },
       "Järntorget": {
         "fps": 60,
-        "p95": 16.7,
+        "p95": 16.8,
         "slow": 0,
         "worst": 17,
         "hitches": 0,
         "pixelRatio": 1.5,
-        "calls": 36,
-        "triangles": 110814
+        "calls": 41,
+        "triangles": 125402
       },
       "Trams at Drottningtorget": {
         "fps": 60,
@@ -112,8 +122,18 @@
         "worst": 17,
         "hitches": 0,
         "pixelRatio": 1.5,
-        "calls": 34,
-        "triangles": 108116
+        "calls": 41,
+        "triangles": 128396
+      },
+      "Riding a tram": {
+        "fps": 60,
+        "p95": 16.8,
+        "slow": 0,
+        "worst": 17,
+        "hitches": 0,
+        "pixelRatio": 1.5,
+        "calls": 54,
+        "triangles": 170659
       },
       "Walking the inner city": {
         "fps": 60,
@@ -122,27 +142,27 @@
         "worst": 17,
         "hitches": 0,
         "pixelRatio": 1.5,
-        "calls": 34,
-        "triangles": 87888
+        "calls": 36,
+        "triangles": 96682
       }
     }
   },
   "load": {
     "desktop": {
-      "downloadS": 0.1135,
-      "bytes": 882577,
+      "downloadS": 0.13310000002384187,
+      "bytes": 880316,
       "wasmBytes": 652517,
-      "wasmDoneS": 0.1135,
-      "compileS": 0.0145,
-      "readyS": 0.4301999999284744
+      "wasmDoneS": 0.13310000002384187,
+      "compileS": 0.012600000023841857,
+      "readyS": 0.41779999995231626
     },
     "phone": {
-      "downloadS": 4.765400000095368,
-      "bytes": 882577,
+      "downloadS": 4.723299999952316,
+      "bytes": 880316,
       "wasmBytes": 652517,
-      "wasmDoneS": 4.765400000095368,
-      "compileS": 3.8295,
-      "readyS": 6.104799999952316
+      "wasmDoneS": 4.723299999952316,
+      "compileS": 3.9378000000715256,
+      "readyS": 5.947200000047684
     }
   }
 }

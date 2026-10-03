@@ -37,6 +37,8 @@ interface Scenario {
 const SCENARIOS: Scenario[] = [
   // Across the city and back: the squares are built where the player stands and taken down again far behind.
   { name: 'Walking the city', round: "for (const p of ['Järntorget', 'Lilla Bommen', 'Kungsportsplatsen', 'Drottningtorget']) { await __us.go(p); settle(); }" },
+  // Aboard a tram from Brunnsparken for a minute and a half, through the squares it passes, off again at Järntorget.
+  { name: 'Riding a tram', round: "await __us.go('Brunnsparken', 'Kungsportsplatsen'); __us.step(1, 30); __us.ride(); for (let k = 0; k < 9; k++) __us.step(10, 15); await __us.go('Järntorget'); settle();" },
 ];
 
 /** Hooks three.js and the canvases in the page, so what is uploaded, freed and still alive can be counted. */

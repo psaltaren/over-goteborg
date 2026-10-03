@@ -1,11 +1,13 @@
-// The app icon as PNG, drawn from the same shapes as public/favicon.svg: a train under a blue tunnel arch.
-// Generated at build time (vite.config.ts), so no image file is committed.
+// The app icon as PNG, drawn from the same shapes as public/favicon.svg: an M34 tram from the front under its contact
+// wire, its pantograph up to the wire. Generated at build time (vite.config.ts), so no image file is committed.
 import { deflateSync } from 'node:zlib';
 
 type RGB = [number, number, number];
 const BG: RGB = [0x05, 0x06, 0x08];
-const BLUE: RGB = [0x1c, 0x63, 0xc4];
-const AMBER: RGB = [0xff, 0xb4, 0x44];
+const BLUE: RGB = [0x3b, 0xa8, 0xe0];
+const CREAM: RGB = [0xee, 0xe8, 0xd6];
+const GLASS: RGB = [0x1d, 0x2a, 0x33];
+const WIRE: RGB = [0x8a, 0x93, 0x99];
 
 /** Signed distance to a rounded box, in the favicon's 64 unit space. */
 function box(x: number, y: number, x0: number, y0: number, w: number, h: number, r: number): number {
@@ -14,19 +16,23 @@ function box(x: number, y: number, x0: number, y0: number, w: number, h: number,
   return Math.hypot(Math.max(qx, 0), Math.max(qy, 0)) + Math.min(Math.max(qx, qy), 0) - r;
 }
 
-/** Distance to the arch's centre line: two walls from y 30 to 54 and a half circle of radius 22 over them. */
-function arch(x: number, y: number): number {
-  if (y > 54) return Infinity;
-  if (y <= 30) return Math.abs(Math.hypot(x - 32, y - 30) - 22);
-  return Math.min(Math.abs(x - 10), Math.abs(x - 54));
+/** Distance to a segment. */
+function line(x: number, y: number, ax: number, ay: number, bx: number, by: number): number {
+  const ex = bx - ax, ey = by - ay;
+  const t = Math.max(0, Math.min(1, ((x - ax) * ex + (y - ay) * ey) / (ex * ex + ey * ey)));
+  return Math.hypot(ax + ex * t - x, ay + ey * t - y);
 }
 
 /** The colour at a point of the 64 unit favicon, or null outside its rounded square. */
 function sample(x: number, y: number, square: boolean): RGB | null {
   if (!square && box(x, y, 0, 0, 64, 64, 14) > 0) return null;
-  if (box(x, y, 24, 38, 6, 5, 0) <= 0 || box(x, y, 34, 38, 6, 5, 0) <= 0) return BG;
-  if (box(x, y, 20, 34, 24, 14, 3) <= 0) return AMBER;
-  if (arch(x, y) <= 3) return BLUE;
+  // The wire across the top, and the pantograph from it down to the roof.
+  if (line(x, y, 7, 11, 57, 11) <= 1 || line(x, y, 28, 12, 36, 25) <= 1) return WIRE;
+  if (box(x, y, 16, 25, 32, 32, 6) <= 0) {
+    if (box(x, y, 20, 33, 24, 11, 2) <= 0) return GLASS;
+    if (box(x, y, 20, 48, 5, 3, 1) <= 0 || box(x, y, 39, 48, 5, 3, 1) <= 0) return CREAM;
+    return y < 31 ? CREAM : BLUE;
+  }
   return BG;
 }
 

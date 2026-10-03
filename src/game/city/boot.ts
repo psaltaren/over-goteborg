@@ -665,6 +665,8 @@ export async function startGame(root: HTMLElement, options: GameOptions = {}): P
       /** The trams drawn this frame, nearest first, and every tram in the area. */
       trams,
       tramStates: () => trams?.states ?? [],
+      /** The runs the trams' states refer to (`run`), with their stops. */
+      runs: tramData?.runs ?? [],
       /** The stops' platforms, shelters and displays. */
       stops,
       /** The sound, and the city's own (rain, gulls, the bell). */

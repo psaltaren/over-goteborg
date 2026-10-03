@@ -59,7 +59,7 @@ kbd {
     var(--bg);
 }
 
-/* The lit entrance sign: white roundel with a blue T on a pole. */
+/* The tram stop's sign: a white roundel with a blue H (hållplats) on a pole. */
 .menu-roundel {
   width: 150px;
   height: 150px;
@@ -77,7 +77,7 @@ kbd {
 
 .menu-roundel span {
   font: 900 86px/0.9 'Helvetica Neue', Helvetica, Arial, sans-serif;
-  color: var(--blue);
+  color: #1f78b4;
   text-shadow: 0 0 14px rgba(28, 99, 196, 0.35);
   transform: translateY(-4px);
 }
@@ -121,16 +121,16 @@ kbd {
   text-align: center;
 }
 
-/* The title as a station entrance sign: a lit blue band with a yellow stripe below. */
+/* The title in the trams' colours: Gothenburg's light blue under a cream stripe, as on the M34. */
 .menu-sign {
   margin-top: 40px;
   padding: 0.55em 1.3em;
   font-size: clamp(1.05rem, 5vw, 2.1rem);
-  background: linear-gradient(180deg, #2449a6, #1b3a8f 55%, #183482);
-  border-bottom: 0.2em solid #f2c200;
+  background: linear-gradient(180deg, #2a86c4, #1f72ad 55%, #1b67a0);
+  border-bottom: 0.2em solid #eee8d6;
   border-radius: 2px;
   box-shadow:
-    0 0 60px rgba(36, 73, 166, 0.55),
+    0 0 60px rgba(59, 168, 224, 0.45),
     inset 0 1px 0 rgba(255, 255, 255, 0.18);
 }
 

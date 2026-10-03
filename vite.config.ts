@@ -79,18 +79,18 @@ ${PAGES.map((p) => `  <url>\n    <loc>${base()}${p.path}</loc>\n${alternates('  
     },
     'llms.txt': {
       type: 'text/plain',
-      body: () => `# Under Stockholm
+      body: () => `# Över Göteborg
 
-> A free first-person browser game in a stylized Stockholm metro: the blue, red and green lines, 100 stations and one shared clock, so every player meets the same trains. Menus in English or Swedish; signs and announcements in Swedish, as in the real metro. Not affiliated with SL.
+> A free first-person browser game in the heart of Gothenburg at street level, from Centralen to Järntorget, with every tram line through it running on Västtrafik's real timetable and one shared clock, so every player meets the same trams. Board a tram and ride it. Menus in English or Swedish; signs and announcements in Swedish, as in the real city. Not affiliated with Västtrafik.
 
 ## Pages
 
-- [Under Stockholm](${base()}${PAGES[1].path}): the English landing page, with a live map of the blue line and the game itself
-- [Under Stockholm på svenska](${base()}): the same page in Swedish
+- [Över Göteborg](${base()}${PAGES[1].path}): the English landing page, with the next trams from Drottningtorget and the game itself
+- [Över Göteborg på svenska](${base()}): the same page in Swedish
 
 ## Source
 
-- [joelhagvall/under-stockholm](https://github.com/joelhagvall/under-stockholm): the code, MIT: TypeScript, three.js and Rapier, no game engine
+- [psaltaren/over-goteborg](https://github.com/psaltaren/over-goteborg): the code, MIT: TypeScript, three.js and Rapier, no game engine. Built on [Under Stockholm](https://github.com/joelhagvall/under-stockholm) by Joel Hägvall.
 `,
     },
     ...Object.fromEntries(ICONS.map((icon) => [icon.file, { type: 'image/png', body: icon.png }])),

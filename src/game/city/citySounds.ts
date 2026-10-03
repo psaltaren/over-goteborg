@@ -22,21 +22,25 @@ const GULL_REACH = 160;
 
 /**
  * A big bell struck once: the partials of a tuned bell (hum, prime, tierce, quint, nominal) over a 180 Hz prime, each
- * dying away at its own pace, the hum longest.
+ * dying away at its own pace, the hum longest. Rendered by the browser off the main thread (an offline context's
+ * oscillators), so the first frames with sound on do not wait for seven seconds of samples.
  */
-function synthBell(ctx: BaseAudioContext): AudioBuffer {
-  const rate = ctx.sampleRate;
-  const buffer = ctx.createBuffer(1, Math.ceil(rate * 7), rate);
-  const data = buffer.getChannelData(0);
+function renderBell(rate: number): Promise<AudioBuffer> {
+  const ctx = new OfflineAudioContext(1, Math.ceil(rate * 7), rate);
   const f = 180;
   const partials: Array<[number, number, number]> = [[0.5, 0.5, 0.35], [1, 0.8, 0.6], [1.2, 0.6, 0.9], [1.5, 0.35, 1.1], [2, 0.7, 1.4], [2.5, 0.25, 2.2], [3, 0.2, 2.8]];
-  for (let i = 0; i < data.length; i++) {
-    const t = i / rate;
-    let v = 0;
-    for (const [ratio, level, decay] of partials) v += level * Math.exp(-t * decay) * Math.sin(2 * Math.PI * f * ratio * t);
-    data[i] = v * Math.min(1, t / 0.004) * 0.18;
+  for (const [ratio, level, decay] of partials) {
+    const osc = ctx.createOscillator();
+    osc.frequency.value = f * ratio;
+    const gain = ctx.createGain();
+    gain.gain.setValueAtTime(0, 0);
+    gain.gain.linearRampToValueAtTime(level * 0.18, 0.004);
+    // Dying away exponentially, at this partial's pace (to a thousandth by the end).
+    gain.gain.setTargetAtTime(0, 0.004, 1 / decay);
+    osc.connect(gain).connect(ctx.destination);
+    osc.start(0);
   }
-  return buffer;
+  return ctx.startRendering();
 }
 
 /** A herring gull's cry, twice: a bright note falling away, with its harmonics and a waver, and a little breath. */
@@ -64,6 +68,7 @@ export class CitySounds {
   private out: AudioOut | null = null;
   private rain: GainNode | null = null;
   private bell: AudioBuffer | null = null;
+  private bellRendering = false;
   private gull: AudioBuffer | null = null;
   private tower: Spatial | null = null;
   private struck = -1;
@@ -107,15 +112,19 @@ export class CitySounds {
     high.type = 'lowpass';
     high.frequency.value = 7000;
     loopNoise(out, 'pink').connect(low).connect(high).connect(this.rain).connect(out.bus);
-    this.bell = synthBell(ctx);
-    this.gull = synthGull(ctx);
+    // The bell's sound is rendered in the background; the gull's is cheap, and made at its first cry.
+    if (!this.bellRendering) {
+      this.bellRendering = true;
+      void renderBell(ctx.sampleRate).then((b) => (this.bell = b)).catch(() => (this.bellRendering = false));
+    }
     this.tower = new Spatial(out, 40, 0.8, 2000);
     this.tower.setPosition({ x: TOWER[0], y: STREET_Y + 45, z: TOWER[1] });
     this.tower.setLevel(1, 0.01);
   }
 
-  /** The bell struck `n` times, a few seconds apart. */
+  /** The bell struck `n` times, a few seconds apart (not at all if its sound is not ready yet). */
   private strike(n: number): void {
+    if (!this.bell) return;
     const ctx = this.out!.ctx;
     for (let k = 0; k < n; k++) {
       const src = ctx.createBufferSource();
@@ -129,6 +138,7 @@ export class CitySounds {
   /** A gull crying somewhere over the water near `at`, high up. */
   private cry([wx, wz]: Pt): void {
     const out = this.out!;
+    this.gull ??= synthGull(out.ctx);
     const spot = new Spatial(out, 8, 1.1, 300);
     const a = Math.random() * Math.PI * 2, r = 15 + Math.random() * 40;
     spot.setPosition({ x: wx + Math.cos(a) * r, y: STREET_Y + 12 + Math.random() * 18, z: wz + Math.sin(a) * r });

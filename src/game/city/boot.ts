@@ -31,7 +31,7 @@ import { Warnings } from '../warnings';
 import { daylight, OpenAirWeather, Weather } from '../weather';
 import { setDaylight } from '../world/section';
 import { Sky } from '../world/sky';
-import { TRAM_FLOOR, TRAM_WIDTH } from '../layout';
+import { TRAM_FLOOR, TRAM_PLATFORM, TRAM_WIDTH } from '../layout';
 import { stepAside } from './aside';
 import { grow, PLACES, placeNear, PLAY, STREET_Y, yawToward, type Pt } from './geo';
 import { loadTramData } from './tramData';
@@ -56,6 +56,11 @@ const FRAME_SLACK_MS = 2.5;
 const CONTEXT_WAIT = 4000;
 /** The open air's fog: from near to far, and the camera's reach just past it (as the metro's game out in the open). */
 const FOG = { near: 80, far: 410 };
+/**
+ * How high over the street someone put somewhere is put: over a platform's kerb (`TRAM_PLATFORM`), so wherever they land
+ * (the street, a platform) they drop the last bit onto it rather than start inside it.
+ */
+const DROP = TRAM_PLATFORM.height + 0.05;
 /** Where the game starts: on Drottningtorget, before Centralstationen, looking down toward Brunnsparken. */
 const START: { at: Pt; toward: Pt } = { at: PLACES.Drottningtorget, toward: PLACES.Brunnsparken };
 
@@ -224,11 +229,11 @@ export async function startGame(root: HTMLElement, options: GameOptions = {}): P
   let listening = debug;
 
   // Where the player starts: where they last stood, if that was in the city, else on Drottningtorget.
-  const startFeet = new Vector3(START.at[0], STREET_Y + 0.05, START.at[1]);
+  const startFeet = new Vector3(START.at[0], STREET_Y + DROP, START.at[1]);
   const player = new Player(physics, startFeet, yawToward(START.at, START.toward));
   const inCity = (x: number, z: number) => x > PLAY.x0 && x < PLAY.x1 && z > PLAY.z0 && z < PLAY.z1;
   const place = options.resume ? savedPlace() : null;
-  if (place && inCity(place.x, place.z)) player.teleport(new Vector3(place.x, STREET_Y + 0.05, place.z), place.yaw);
+  if (place && inCity(place.x, place.z)) player.teleport(new Vector3(place.x, STREET_Y + DROP, place.z), place.yaw);
   let boundKeys = '';
   settings.on((s) => {
     if (player.camera.fov !== s.fov) {
@@ -417,7 +422,7 @@ export async function startGame(root: HTMLElement, options: GameOptions = {}): P
     void hud
       .blackout(() => {
         const near = PLACES[placeNear(player.feet.x, player.feet.z).name];
-        player.teleport(new Vector3(near[0], STREET_Y + 0.05, near[1]));
+        player.teleport(new Vector3(near[0], STREET_Y + DROP, near[1]));
         hud.say(message, 6);
       })
       .then(() => (respawning = false));
@@ -439,7 +444,7 @@ export async function startGame(root: HTMLElement, options: GameOptions = {}): P
     }
     const to = stepAside(player.feet.x, player.feet.z, hit.section, trams!.obstacles(), trams!.tracksNear(player.feet.x, player.feet.z, 30), TRAM_WIDTH / 2,
       (x, z) => physics.free(x, STREET_Y, z, player.collider));
-    if (to) player.teleport(new Vector3(to[0], STREET_Y + 0.05, to[1]));
+    if (to) player.teleport(new Vector3(to[0], STREET_Y + DROP, to[1]));
     else respawn(text.tram.aside);
   }
 
@@ -464,7 +469,7 @@ export async function startGame(root: HTMLElement, options: GameOptions = {}): P
     player.yaw += moved.turn;
     const tram = trams.tram(aboard.id)!;
     const st = tram.state;
-    player.setRide(st.s, st.speed, dt > 0 ? (st.speed - lastSpeed) / dt : 0, motion);
+    player.setRide(st.s, st.speed, dt > 0 ? (st.speed - lastSpeed) / dt : 0, motion, moved.heading);
     lastSpeed = st.speed;
     const run = tramData!.runs[st.run];
     const nextName = st.next >= 0 ? run.stops[st.next].name : '';
@@ -487,6 +492,8 @@ export async function startGame(root: HTMLElement, options: GameOptions = {}): P
    */
   function warn(): void {
     const now = performance.now();
+    // On a platform (up on its kerb) someone waits for the tram, and no driver rings at them.
+    if (player.feet.y > STREET_Y + 0.15 || now - rang < 3000) return;
     for (const tram of trams!.drawn) {
       if (tram.distance > 45) break;
       const speed = Math.abs(tram.state.speed);
@@ -494,8 +501,9 @@ export async function startGame(root: HTMLElement, options: GameOptions = {}): P
       const f = tram.sections[0];
       const ux = player.feet.x - f.x, uz = player.feet.z - f.z;
       const along = ux * f.dx + uz * f.dz, across = -ux * f.dz + uz * f.dx;
-      if (along > f.hl && along < f.hl + 10 + speed * 1.5 && Math.abs(across) < TRAM_WIDTH / 2 + 1.8) {
+      if (along > f.hl && along < f.hl + 10 + speed * 1.5 && Math.abs(across) < TRAM_WIDTH / 2 + 0.9) {
         warned.set(tram.state.id, now);
+        rang = now;
         audio.bell(0.8);
       }
     }
@@ -579,8 +587,8 @@ export async function startGame(root: HTMLElement, options: GameOptions = {}): P
 
     if (trams) {
       // Who stands in which tram is judged before they move; then they move, and the rider with them.
-      aboard = respawning ? null : trams.aboard(player.feet);
-      trams.update(time, player.feet.x, player.feet.z, sky.daylight);
+      aboard = respawning ? null : trams.aboard(player.feet, aboard);
+      trams.update(time, player.feet.x, player.feet.z, sky.daylight, aboard?.id ?? null);
       if (!aboard) {
         outOfTheWay();
         warn();
@@ -602,8 +610,9 @@ export async function startGame(root: HTMLElement, options: GameOptions = {}): P
 
     // The place the player is nearest, in the status bar.
     const near = placeNear(player.feet.x, player.feet.z);
+    // In-world, the line ridden in Swedish whatever the menus' language.
     const riding = aboard && trams?.tram(aboard.id)?.state;
-    hud.setStatus(near.name, riding && riding.line ? text.tram.line.replace('{line}', riding.line).replace('{headsign}', riding.headsign) : '');
+    hud.setStatus(near.name, riding && riding.line ? sv.tram.line.replace('{line}', riding.line).replace('{headsign}', riding.headsign) : '');
     const out = listening ? audio.output : null;
     if (out) placeListener(out, player.camera.position, player.yaw);
     weather.update(dt, time, null, out);
@@ -696,7 +705,7 @@ export async function startGame(root: HTMLElement, options: GameOptions = {}): P
         const at = PLACES[name];
         if (!at) throw new Error(`No place called ${name}: ${Object.keys(PLACES).join(', ')}`);
         const look = toward ? PLACES[toward] : null;
-        player.teleport(new Vector3(at[0], STREET_Y + 0.05, at[1]), look ? yawToward(at, look) : undefined);
+        player.teleport(new Vector3(at[0], STREET_Y + DROP, at[1]), look ? yawToward(at, look) : undefined);
         world.ensureBuilt(at[0], at[1]);
         return this.info();
       },

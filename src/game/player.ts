@@ -47,7 +47,7 @@ export class Player {
   /** How tall the player is next to an adult: a child sits lower (see `life.ts`). */
   eyeScale = 1;
   private cameraSeatZ = 0;
-  private ride = { distance: 0, speed: 0, acceleration: 0, enabled: false };
+  private ride = { distance: 0, speed: 0, acceleration: 0, enabled: false, heading: 0 };
   private shake = 0;
   private shakeTime = 0;
   /** In driver mode the camera sits in the cab while the capsule rides behind the bulkhead. */
@@ -81,8 +81,12 @@ export class Player {
     this.jumpQueued = false;
   }
 
-  setRide(distance: number, speed: number, acceleration: number, enabled: boolean): void {
-    this.ride = { distance, speed, acceleration, enabled };
+  /**
+   * The ride's sway: how far and fast the vehicle goes and how hard it speeds up, and the way it heads (`heading`, a yaw
+   * as the world has it: 0 along +x, the metro's trains), so the lean goes along it whichever way the player looks.
+   */
+  setRide(distance: number, speed: number, acceleration: number, enabled: boolean, heading = 0): void {
+    this.ride = { distance, speed, acceleration, enabled, heading };
   }
 
   /** A short shake of the view, e.g. when a train passes the other way (camera only). */
@@ -232,7 +236,7 @@ export class Player {
     const blend = 1 - Math.exp(-dt * 9);
     this.eyeHeight += ((this.seated ? RIDE_LAYOUT.seatedEye : EYE) * this.eyeScale - this.eyeHeight) * blend;
     this.cameraSeatZ += (this.seatOffsetZ - this.cameraSeatZ) * blend;
-    const motion = rideMotion(this.ride.distance, this.ride.speed, this.ride.acceleration, this.yaw, this.ride.enabled);
+    const motion = rideMotion(this.ride.distance, this.ride.speed, this.ride.acceleration, this.yaw - this.ride.heading, this.ride.enabled);
     this.shakeTime += dt;
     this.shake *= Math.exp(-dt * 5);
     const shake = this.ride.enabled ? this.shake : 0;

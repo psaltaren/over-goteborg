@@ -145,7 +145,6 @@ kbd {
 }
 
 /* Everything below the hero shares one column, so its left edges line up. */
-.line-now,
 .menu-shot,
 .menu-section {
   max-width: 560px;
@@ -222,73 +221,11 @@ kbd {
   outline-offset: 3px;
 }
 
-.menu-actions button:disabled,
-.menu-more button:disabled {
+.menu-actions button:disabled {
   cursor: progress;
   opacity: 0.75;
 }
 
-/* The other ways in, quieter than the way down: each says what it opens. */
-.menu-more {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: 4px;
-  margin: 22px 0 0;
-  padding: 0;
-  list-style: none;
-}
-
-.menu-more button,
-.menu-more a {
-  appearance: none;
-  display: block;
-  width: 100%;
-  height: 100%;
-  min-height: 48px;
-  padding: 8px 12px;
-  border: 0;
-  border-radius: 10px;
-  font: 600 0.98rem/1.35 var(--font);
-  color: var(--ink);
-  text-decoration: none;
-  background: transparent;
-  cursor: pointer;
-  touch-action: manipulation;
-  transition: background 0.15s ease;
-}
-
-.menu-more span {
-  text-decoration: underline;
-  text-decoration-color: rgba(238, 242, 248, 0.35);
-  text-underline-offset: 4px;
-  transition: text-decoration-color 0.15s ease;
-}
-
-.menu-more button:hover,
-.menu-more a:hover {
-  background: rgba(255, 255, 255, 0.06);
-}
-
-.menu-more :hover > span {
-  text-decoration-color: var(--ink);
-}
-
-/* Side by side where there is room, the three read as one row of choices. */
-@media (min-width: 601px) {
-  .menu-more {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-  }
-}
-
-.menu-more button:focus-visible,
-.menu-more a:focus-visible {
-  outline: 3px solid var(--amber);
-  outline-offset: 2px;
-}
-
-.menu-more small,
 .menu-continue small {
   display: block;
   margin-top: 4px;
@@ -376,8 +313,7 @@ kbd {
   text-align: left;
 }
 
-.menu-section h2,
-.line-now h2 {
+.menu-section h2 {
   text-wrap: balance;
   margin: 0;
   font-size: 1.1rem;
@@ -526,91 +462,6 @@ kbd {
   outline-offset: 2px;
 }
 
-/* Live line map on the landing page. Heights are fixed so nothing shifts when the map loads. */
-
-.line-now {
-  /* The line shown: its colour for the tracks, and a darker one that white text reads on. */
-  --line: var(--blue);
-  --line-ink: var(--blue);
-  margin: 28px auto 0;
-  padding: 18px 20px 16px;
-  max-width: 560px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 14px;
-  background: rgba(255, 255, 255, 0.03);
-  text-align: left;
-}
-
-.line-now[data-line='red'] {
-  --line: #d7263d;
-  --line-ink: #c21f33;
-}
-
-.line-now[data-line='green'] {
-  --line: #2e8b57;
-  --line-ink: #1f7a45;
-}
-
-.line-now-lines {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-top: 14px;
-}
-
-.line-now-lines button {
-  appearance: none;
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  min-height: 32px;
-  padding: 6px 12px;
-  border: 1px solid rgba(255, 255, 255, 0.16);
-  border-radius: 999px;
-  font: 600 0.85rem/1 var(--font);
-  color: var(--muted);
-  background: transparent;
-  cursor: pointer;
-  touch-action: manipulation;
-}
-
-.line-now-lines button::before {
-  content: '';
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  background: var(--blue);
-}
-
-.line-now-lines [data-line='1']::before {
-  background: #d7263d;
-}
-
-.line-now-lines [data-line='2']::before {
-  background: #2e8b57;
-}
-
-.line-now-lines button:hover {
-  border-color: rgba(255, 255, 255, 0.45);
-  color: var(--ink);
-}
-
-.line-now-lines button[aria-pressed='true'] {
-  border-color: var(--ink);
-  color: var(--ink);
-}
-
-.line-now-lines button:focus-visible {
-  outline: 2px solid var(--amber);
-  outline-offset: 2px;
-}
-
-.line-map {
-  position: relative;
-  height: 132px;
-  margin: 18px 0 10px;
-}
-
 /* The trunk runs across the middle; where routes part, the northern branch goes up. */
 .line-tracks {
   position: absolute;
@@ -672,85 +523,6 @@ kbd {
   .line-station-name:not(.is-outer) {
     display: none;
   }
-}
-
-.line-train {
-  position: absolute;
-  display: grid;
-  place-items: center;
-  width: 28px;
-  height: 18px;
-  border: 2px solid var(--ink);
-  border-radius: 9px;
-  background: var(--line-ink);
-  color: #fff;
-  font: 700 0.65rem/1 var(--font);
-  transform: translate(-50%, -50%);
-}
-
-.line-train.is-open {
-  border-color: var(--amber);
-}
-
-/* SL's own trains are drawn light, so they are not mistaken for the game's. */
-.line-now.is-real .line-train {
-  border-color: var(--line-ink);
-  background: var(--ink);
-  color: var(--line-ink);
-}
-
-.line-now.is-real .line-train.is-open {
-  border-color: var(--amber);
-}
-
-.line-trains {
-  display: grid;
-  font-variant-numeric: tabular-nums;
-  gap: 4px;
-  min-height: 7.5em;
-  margin: 8px 0 0;
-  padding: 0;
-  list-style: none;
-  font-size: 0.9rem;
-}
-
-.line-train-row {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-  line-height: 1.5;
-}
-
-.line-train-row.is-empty {
-  color: var(--muted);
-}
-
-.line-train-badge {
-  flex: none;
-  min-width: 2.2em;
-  padding: 0 6px;
-  border-radius: 6px;
-  background: var(--line-ink);
-  color: #fff;
-  font-weight: 700;
-  font-size: 0.8rem;
-  text-align: center;
-}
-
-.line-train-destination {
-  font-weight: 600;
-}
-
-.line-train-where {
-  color: var(--muted);
-}
-
-.line-note {
-  min-height: 3em;
-  margin: 10px 0 0;
-  font-size: 0.8rem;
-  line-height: 1.5;
-  color: var(--muted);
 }
 
 /* Game */
@@ -962,8 +734,6 @@ button.pause-support {
 @media (prefers-reduced-motion: reduce) {
   .menu-start,
   .menu-continue,
-  .menu-more button,
-  .menu-more a,
   .hud-caption,
   .hud-help,
   .hud-fade {

@@ -17,6 +17,8 @@ export interface TramState {
   speed: number;
   /** How far its doors are open, 0 to 1, and on which side of the way it goes (1 right, -1 left). */
   doors: number;
+  /** Whether its doors are closing (it leaves soon), not opening. */
+  closing: boolean;
   side: 1 | -1;
   /** What its sign says. */
   line: string;
@@ -110,11 +112,14 @@ export class TripTable {
         if (list[mid].t < t) lo = mid + 1;
         else hi = mid;
       }
-      for (let i = lo; i < list.length && i < lo + n; i++) {
+      // The next `n` in service from this day: a tram going out of service from here is passed over, not counted.
+      for (let i = lo, found = 0; i < list.length && found < n; i++) {
         const { trip, stop: k } = list[i];
         const run = this.runs[index.trips[trip].run];
         const sign = signAt(run, run.stops[k].s);
-        if (sign.line) out.push({ at: sd.start + list[i].t, line: sign.line, headsign: sign.headsign });
+        if (!sign.line) continue;
+        out.push({ at: sd.start + list[i].t, line: sign.line, headsign: sign.headsign });
+        found++;
       }
     }
     return out.sort((a, b) => a.at - b.at).slice(0, n);
@@ -152,18 +157,19 @@ export class TripTable {
       if (t >= arr && t <= dep) stop = i;
       if (arr > t && next < 0 && run.stops[i].s <= run.length) next = i;
     }
-    let doors = 0, side: 1 | -1 = 1;
+    let doors = 0, closing = false, side: 1 | -1 = 1;
     const at = stop >= 0 ? run.stops[stop] : null;
     // Doors open only at a stop in the area that is a stop (not the edge a tram comes in from or goes out to).
     if (at && at.stop && at.s >= 0 && at.s <= run.length) {
       const arr = trip.times[2 * stop], dep = trip.times[2 * stop + 1];
       const opening = Math.min(1, Math.max(0, (t - arr - DOORS_AFTER) / DOORS_MOVE));
-      const closing = Math.min(1, Math.max(0, (dep - DOORS_SHUT - t) / DOORS_MOVE));
-      doors = Math.min(opening, closing);
+      const shutting = Math.min(1, Math.max(0, (dep - DOORS_SHUT - t) / DOORS_MOVE));
+      doors = Math.min(opening, shutting);
+      closing = t > dep - DOORS_SHUT - DOORS_MOVE;
       side = at.side;
     }
     const sign = signAt(run, s);
-    Object.assign(into, { id, run: trip.run, s, speed, doors, side, line: sign.line, headsign: sign.headsign, stop, next });
+    Object.assign(into, { id, run: trip.run, s, speed, doors, closing, side, line: sign.line, headsign: sign.headsign, stop, next });
     return true;
   }
 }

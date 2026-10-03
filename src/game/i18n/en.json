@@ -165,8 +165,7 @@
   },
   "tram": {
     "aside": "The tram rings its bell. You step aside.",
-    "alight": "The tram leaves the inner city. You get off.",
-    "line": "Line {line} to {headsign}"
+    "alight": "The tram leaves the inner city. You get off."
   },
   "battery": {
     "toggle": "Battery saver",

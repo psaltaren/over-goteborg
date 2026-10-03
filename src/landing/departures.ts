@@ -53,6 +53,14 @@ export async function mountDepartures(board: HTMLElement): Promise<void> {
     }));
     board.classList.remove('is-pending');
   };
+  // Drawn again every so often while the page is the landing page and in view; once the game has started, let go of
+  // (the game has its own copy of the timetable).
+  const timer = setInterval(() => {
+    if (document.body.classList.contains('is-playing')) {
+      clearInterval(timer);
+      return;
+    }
+    if (!document.hidden) void draw().catch(() => {});
+  }, EVERY);
   await draw();
-  setInterval(() => void draw().catch(() => {}), EVERY);
 }

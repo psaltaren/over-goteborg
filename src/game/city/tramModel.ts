@@ -74,8 +74,9 @@ export interface TramModel {
 
 /** The inside's height: the ceiling, under the roof's equipment. */
 export const CEILING = 2.45;
-/** The walls' thickness inside, as the colliders have them. */
+/** The walls' thickness inside, as the colliders have them, and how near the street the colliders reach. */
 const WALL = 0.08;
+export const SKIRT = 0.02;
 
 /** A box a section's colliders are made of, in its own frame; a door's panel says which door and side it closes. */
 export interface SectionBox {
@@ -100,11 +101,14 @@ export function sectionBoxes(kind: 'end' | 'middle'): SectionBox[] {
   const hl = kind === 'end' ? END_HALF : MID_HALF;
   const x0 = -hl - TRAM_JOINT / 2;
   const x1 = kind === 'end' ? hl - NOSE : hl + TRAM_JOINT / 2;
+  // The floor reaches down to the street, as the skirt does: a box edge over the street would press someone walking into
+  // it down into the ground.
   const out: SectionBox[] = [
-    { x0, x1, y0: TRAM_FLOOR - 0.15, y1: TRAM_FLOOR, z0: -HW, z1: HW },
+    { x0, x1, y0: SKIRT, y1: TRAM_FLOOR, z0: -HW, z1: HW },
     { x0, x1, y0: CEILING, y1: CEILING + 0.2, z0: -HW, z1: HW },
   ];
-  if (kind === 'end') out.push({ x0: x1 - 0.12, x1, y0: TRAM_FLOOR, y1: CEILING, z0: -HW, z1: HW });
+  // The wall to the cab, and the cab itself solid from the outside (no one goes in at its nose).
+  if (kind === 'end') out.push({ x0: x1 - 0.12, x1, y0: TRAM_FLOOR, y1: CEILING, z0: -HW, z1: HW }, { x0: x1, x1: hl, y0: SKIRT, y1: EAVE, z0: -HW, z1: HW });
   const half = TRAM_DOORS.width / 2;
   const doors = doorsOf(kind);
   for (const s of [1, -1] as const) {

@@ -39,7 +39,7 @@ import type { Run } from './schedule';
 import type { Link } from './trackData';
 import { TrackIndex } from './trackIndex';
 import type { TramState, TripTable } from './tripTable';
-import { doorsOf, sectionBoxes, sectionHalf, tramModel, type SectionBox } from './tramModel';
+import { doorsOf, sectionBoxes, sectionHalf, SKIRT, tramModel, type SectionBox } from './tramModel';
 
 /** The most trams drawn at once (the area holds 30 at the weekday rush). */
 const CAPACITY = 48;
@@ -49,9 +49,15 @@ const SOLID_REACH = 70;
 /** Trams this near have their inside drawn, and this near can be boarded: doorways, a floor, walls. */
 const INSIDE_REACH = 40;
 const BOARD_REACH = 25;
-/** How many trams at once may be near enough to board (the rest nearby are solid boxes), and have their inside drawn. */
+/**
+ * How many trams at once may be near enough to board (the rest nearby are solid boxes), and have their inside drawn: those
+ * near, and those standing with their doors open within `OPEN_REACH`, so no open doorway shows through the car.
+ */
 const BOARDABLE = 3;
-const INSIDES = 4;
+const INSIDES = 8;
+const OPEN_REACH = 120;
+/** How far past a section's end someone still counts as in it: the outer half of a bellows on a tight curve. */
+const JOINT_SLACK = 0.6;
 /** The sections' boxes, front to rear: the end sections' and the middle ones'. */
 const BOXES: SectionBox[][] = [sectionBoxes('end'), sectionBoxes('middle'), sectionBoxes('middle'), sectionBoxes('end')];
 /** How far a tram runs on its track while it fades in, or out, where its run begins or ends. */
@@ -281,8 +287,11 @@ export class Trams {
   private readonly endInside: InstancedMesh;
   private readonly middleInside: InstancedMesh;
   private readonly inside = fading(new MeshBasicMaterial({ vertexColors: true }), 'inside');
-  /** The boxes of the trams near enough to board, a set per tram, each box made once its size. */
+  /** The boxes of the trams near enough to board, a set per tram, each box made once its size; which tram each set was last put round, and how. */
   private readonly boardSlots: RAPIER.Collider[][] = [];
+  private readonly slotTram: Array<{ id: number; s: number; open: boolean } | null> = [];
+  private readonly colliderAt = { x: 0, y: 0, z: 0 };
+  private readonly colliderTurn = { x: 0, y: 0, z: 0, w: 1 };
   /** The display over the aisle of the tram ridden, and what it says. */
   readonly display: Mesh;
   private readonly displayCanvas: HTMLCanvasElement;
@@ -352,7 +361,7 @@ export class Trams {
    * The trams at `time` (epoch seconds), drawn round the player at (`px`, `pz`): each section, its glass, doors, bellows,
    * lamps and signs; the near ones solid. `daylight` (0 to 1) dims the bodies and lights the windows.
    */
-  update(time: number, px: number, pz: number, daylight: number): void {
+  update(time: number, px: number, pz: number, daylight: number, riding: number | null = null): void {
     this.states = this.table.at(time, this.states);
     this.atlas.next();
     // The trams to draw, nearest first: when there are more signs about than the atlas holds, the nearest have theirs.
@@ -365,7 +374,8 @@ export class Trams {
       if (near > SHOW_REACH) continue;
       const tram = (this.pool[this.drawn.length] ??= { state: st, sections: [], distance: 0 });
       tram.state = st;
-      tram.distance = near;
+      // The tram ridden first of all: its boxes, its inside, its sign.
+      tram.distance = st.id === riding ? 0 : near;
       for (let k = 0; k < poses.length; k++) {
         const f = (tram.sections[k] ??= { x: 0, z: 0, dx: 1, dz: 0, hl: 0, hw: TRAM_WIDTH / 2 });
         f.x = poses[k].x;
@@ -380,7 +390,7 @@ export class Trams {
     this.drawn.sort((a, b) => a.distance - b.distance);
     let ends = 0, middles = 0, joints = 0, pantographs = 0, leaves = 0, signs = 0, solid = 0, endsIn = 0, middlesIn = 0, boarding = 0, insides = 0;
     for (const tram of this.drawn) {
-      const showInside = tram.distance < INSIDE_REACH && insides++ < INSIDES;
+      const showInside = (tram.distance < INSIDE_REACH || (tram.state.doors > 0.02 && tram.distance < OPEN_REACH)) && insides++ < INSIDES;
       const st = tram.state;
       const fade = this.fadeOf(st);
       const row = this.atlas.row(st.line, st.headsign);
@@ -435,7 +445,11 @@ export class Trams {
       if (tram.distance < BOARD_REACH && boarding < BOARDABLE) this.boardable(tram, boarding++);
       else if (tram.distance < SOLID_REACH) solid = this.solid(tram.sections, solid);
     }
-    for (let k = boarding; k < this.boardSlots.length; k++) for (const c of this.boardSlots[k]) c.setEnabled(false);
+    for (let k = boarding; k < this.boardSlots.length; k++) {
+      if (this.slotTram[k] === null) continue;
+      for (const c of this.boardSlots[k]) c.setEnabled(false);
+      this.slotTram[k] = null;
+    }
     for (let k = solid; k < this.colliders.length; k++) this.colliders[k].setEnabled(false);
     this.upload(this.ends, ends);
     this.upload(this.endGlass, ends);
@@ -470,7 +484,7 @@ export class Trams {
   /** Boxes for a near tram's sections, from the pool: `used` taken so far, and the count after. */
   private solid(sections: Footprint[], used: number): number {
     const R = this.physics.R;
-    const half = (TRAM_BODY.eave - TRAM_BODY.foot) / 2;
+    const half = (TRAM_BODY.eave - SKIRT) / 2;
     for (const f of sections) {
       let c = this.colliders[used];
       if (!c) {
@@ -479,7 +493,7 @@ export class Trams {
       }
       c.setHalfExtents({ x: f.hl, y: half, z: f.hw });
       const yaw = Math.atan2(-f.dz, f.dx);
-      c.setTranslation({ x: f.x, y: STREET_Y + TRAM_BODY.foot + half, z: f.z });
+      c.setTranslation({ x: f.x, y: STREET_Y + SKIRT + half, z: f.z });
       c.setRotation({ x: 0, y: Math.sin(yaw / 2), z: 0, w: Math.cos(yaw / 2) });
       c.setEnabled(true);
       used++;
@@ -495,57 +509,81 @@ export class Trams {
     const R = this.physics.R;
     if (!this.boardSlots[slot]) {
       this.boardSlots[slot] = BOXES.flatMap((boxes) => boxes.map((b) => this.physics.world.createCollider(R.ColliderDesc.cuboid((b.x1 - b.x0) / 2, (b.y1 - b.y0) / 2, (b.z1 - b.z0) / 2))));
+      this.slotTram[slot] = null;
     }
+    const doorsOpen = tram.state.doors > 0.6;
+    // A tram standing where it stood last frame, its doors as they were, keeps its boxes where they are.
+    const kept = this.slotTram[slot];
+    if (kept && kept.id === tram.state.id && kept.s === tram.state.s && kept.open === doorsOpen) return;
+    this.slotTram[slot] = { id: tram.state.id, s: tram.state.s, open: doorsOpen };
     const colliders = this.boardSlots[slot];
     const last = tram.sections.length - 1;
+    const at = this.colliderAt, rotation = this.colliderTurn;
     let i = 0;
     for (let k = 0; k <= last; k++) {
       const f = frameOf(tram.sections[k], k, last);
       const yaw = Math.atan2(-f.dz, f.dx);
-      const rotation = { x: 0, y: Math.sin(yaw / 2), z: 0, w: Math.cos(yaw / 2) };
+      rotation.y = Math.sin(yaw / 2);
+      rotation.w = Math.cos(yaw / 2);
       // The doors open on the platform's side, as the tram sees it; the rear section is turned round.
-      const open = tram.state.doors > 0.6 ? (k === last ? -tram.state.side : tram.state.side) : 0;
+      const open = doorsOpen ? (k === last ? -tram.state.side : tram.state.side) : 0;
       for (const b of BOXES[k]) {
         const c = colliders[i++];
         const lx = (b.x0 + b.x1) / 2, lz = (b.z0 + b.z1) / 2;
-        c.setTranslation({ x: f.x + lx * f.dx - lz * f.dz, y: STREET_Y + (b.y0 + b.y1) / 2, z: f.z + lx * f.dz + lz * f.dx });
+        at.x = f.x + lx * f.dx - lz * f.dz;
+        at.y = STREET_Y + (b.y0 + b.y1) / 2;
+        at.z = f.z + lx * f.dz + lz * f.dx;
+        c.setTranslation(at);
         c.setRotation(rotation);
         c.setEnabled(b.step ? b.step.side === open : !(b.door && b.door.side === open));
       }
     }
   }
 
-  /** Where someone with their feet at `feet` stands in a tram near enough to board, or null when in none. */
-  aboard(feet: Vector3): Aboard | null {
+  /**
+   * Where someone with their feet at `feet` stands in a tram, or null when in none: on its floor (or its step), or, if
+   * they were in it the frame before (`was`), anywhere up off it, as in a jump. Of the sections a point at an
+   * articulation lies in, the one it lies furthest into.
+   */
+  aboard(feet: Vector3, was: Aboard | null = null): Aboard | null {
     const floor = STREET_Y + TRAM_FLOOR;
-    if (Math.abs(feet.y - floor) > 0.35) return null;
+    let best: Aboard | null = null, bestOut = Infinity;
     // Every tram drawn, not only those that were near: the player may have been put in one (a teleport, a respawn).
     for (const tram of this.drawn) {
+      const up = feet.y - floor;
+      const same = was?.id === tram.state.id;
+      if (!(Math.abs(up) <= 0.2 || (same && up > -0.25 && up < 1.4))) continue;
       const last = tram.sections.length - 1;
       for (let k = 0; k <= last; k++) {
         const f = frameOf(tram.sections[k], k, last);
         const ux = feet.x - f.x, uz = feet.z - f.z;
         if (ux * ux + uz * uz > 64) continue;
         const x = ux * f.dx + uz * f.dz, z = -ux * f.dz + uz * f.dx;
-        // Within the section and half each articulation, inside its walls.
-        if (Math.abs(x) <= tram.sections[k].hl + TRAM_JOINT_HALF && Math.abs(z) < TRAM_WIDTH / 2 - 0.05) return { id: tram.state.id, k, x, z, yaw: Math.atan2(-f.dz, f.dx) };
+        // Inside its walls, and within the section, half each articulation and a little more on a curve's outside.
+        const out = Math.abs(x) - (tram.sections[k].hl + TRAM_JOINT_HALF);
+        if (out <= JOINT_SLACK && out < bestOut && Math.abs(z) < TRAM_WIDTH / 2 - 0.05) {
+          best = { id: tram.state.id, k, x, z, yaw: Math.atan2(-f.dz, f.dx) };
+          bestOut = out;
+        }
       }
     }
-    return null;
+    return best;
   }
 
   /**
    * Where someone who stood at `on` before this frame's move stands now, the tram having moved on: how far they are
    * carried, and how far turned. Null when that tram is no longer drawn (it has left the area).
    */
-  carry(on: Aboard): { dx: number; dz: number; turn: number } | null {
+  carry(on: Aboard): { dx: number; dz: number; turn: number; heading: number } | null {
     const tram = this.drawn.find((t) => t.state.id === on.id);
     if (!tram || !tram.sections[on.k]) return null;
-    const f = frameOf(tram.sections[on.k], on.k, tram.sections.length - 1);
+    const section = tram.sections[on.k];
+    const f = frameOf(section, on.k, tram.sections.length - 1);
     const yaw = Math.atan2(-f.dz, f.dx);
     let turn = yaw - on.yaw;
     turn -= Math.round(turn / (2 * Math.PI)) * 2 * Math.PI;
-    return { dx: f.x + on.x * f.dx - on.z * f.dz, dz: f.z + on.x * f.dz + on.z * f.dx, turn };
+    // The way the tram goes there (its section's, not turned round for the rear cab), for the sway.
+    return { dx: f.x + on.x * f.dx - on.z * f.dz, dz: f.z + on.x * f.dz + on.z * f.dx, turn, heading: Math.atan2(-section.dz, section.dx) };
   }
 
   /** The tram drawn with this id, or undefined. */
@@ -561,7 +599,7 @@ export class Trams {
     for (const tram of this.drawn) {
       if (tram.distance > BOARD_REACH) break;
       const st = tram.state;
-      if (st.doors <= 0 || st.doors > 0.7) continue;
+      if (!st.closing || st.doors <= 0 || st.doors > 0.7) continue;
       const last = tram.sections.length - 1;
       for (let k = 0; k <= last; k++) {
         const f = frameOf(tram.sections[k], k, last);

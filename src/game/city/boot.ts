@@ -35,6 +35,7 @@ import { TRAM_FLOOR, TRAM_WIDTH } from '../layout';
 import { stepAside } from './aside';
 import { grow, PLACES, placeNear, PLAY, STREET_Y, yawToward, type Pt } from './geo';
 import { loadTramData } from './tramData';
+import { Stops } from './stops';
 import { Trams, type Aboard } from './trams';
 import { BUILD_REACH, CityWorld } from './world';
 
@@ -206,6 +207,9 @@ export async function startGame(root: HTMLElement, options: GameOptions = {}): P
   const tramData = await tramsUp;
   const trams = tramData ? new Trams(physics, tramData.table, tramData.runs, tramData.links) : null;
   if (trams) scene.add(trams.group);
+  // The stops: platforms, shelters, names, and the next trams on their displays.
+  const stops = tramData ? new Stops(physics, tramData.table, tramData.runs, tramData.links) : null;
+  if (stops) scene.add(stops.group);
   let listening = debug;
 
   // Where the player starts: where they last stood, if that was in the city, else on Drottningtorget.
@@ -588,6 +592,7 @@ export async function startGame(root: HTMLElement, options: GameOptions = {}): P
       secondTimer = 1;
       hud.setClock(formatClock(time));
       if (++placeTimer % 5 === 0) rememberPlace();
+      stops?.update(time, player.feet.x, player.feet.z);
       // The next service day's timetable, fetched a couple of minutes before it starts.
       if (placeTimer % 60 === 0) void tramData?.ensure(time + 120);
     }
@@ -622,6 +627,8 @@ export async function startGame(root: HTMLElement, options: GameOptions = {}): P
       /** The trams drawn this frame, nearest first, and every tram in the area. */
       trams,
       tramStates: () => trams?.states ?? [],
+      /** The stops' platforms, shelters and displays. */
+      stops,
       /** Aboard the nearest tram standing at a stop with its doors open (else the nearest), in its second section's aisle, facing ahead. */
       ride() {
         const tram = trams?.drawn.find((t) => t.state.doors > 0.5 && t.state.line) ?? trams?.drawn[0];

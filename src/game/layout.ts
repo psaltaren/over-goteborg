@@ -486,5 +486,11 @@ export const TRAM_RAIL = { head: 0.07, groove: 0.04, y: -0.032, bed: 0.45, bedY:
  * flicker out of sight).
  */
 export const TRAM_POLES = { every: 36, keep: 10, out: TRAM_WIDTH / 2 + 1.25, half: 0.11, wire: 0.025 } as const;
+/**
+ * A tram stop's platform, beside its track: as high as Gothenburg's kerbs, its edge this far from the track's middle
+ * (a hand's breadth from a tram's side), at most this wide (less where another track comes near), reaching from the
+ * stop as far back as a tram is long and a little ahead.
+ */
+export const TRAM_PLATFORM = { height: 0.25, edge: TRAM_WIDTH / 2 + 0.08, width: 2.6, back: TRAM_LENGTH + 1.5, ahead: 1.5 } as const;
 /** How quickly a tram speeds up and slows down in the street, in m/s². */
 export const TRAM_ACCEL = 1.0;

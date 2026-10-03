@@ -39,6 +39,15 @@ const SPEED_STEP = 0.05;
 interface DayIndex {
   trips: Trip[];
   buckets: Map<number, number[]>;
+  /** For each stop (its id), the day's departures from it in time order, made the first time a stop's are asked for. */
+  departures?: Map<string, Array<{ t: number; trip: number; stop: number }>>;
+}
+
+/** A tram leaving a stop: when (epoch seconds), and what its sign says. */
+export interface Departure {
+  at: number;
+  line: string;
+  headsign: string;
 }
 
 export class TripTable {
@@ -80,6 +89,53 @@ export class TripTable {
     }
     out.length = n;
     return out;
+  }
+
+  /**
+   * The next `n` trams to leave the stop `stop` (Västtrafik's id, a platform) after `epoch`, soonest first: from the
+   * timetables of the service days running then, as `at` places the trams (so a tram held by the block pass leaves when
+   * it is seen to leave). Not those going out of service from it.
+   */
+  departures(stop: string, epoch: number, n = 3): Departure[] {
+    const out: Departure[] = [];
+    for (const sd of serviceDays(epoch)) {
+      const index = this.days.get(sd.day);
+      if (!index) continue;
+      const list = this.departuresOf(index).get(stop);
+      if (!list) continue;
+      const t = epoch - sd.start;
+      let lo = 0, hi = list.length;
+      while (lo < hi) {
+        const mid = (lo + hi) >> 1;
+        if (list[mid].t < t) lo = mid + 1;
+        else hi = mid;
+      }
+      for (let i = lo; i < list.length && i < lo + n; i++) {
+        const { trip, stop: k } = list[i];
+        const run = this.runs[index.trips[trip].run];
+        const sign = signAt(run, run.stops[k].s);
+        if (sign.line) out.push({ at: sd.start + list[i].t, line: sign.line, headsign: sign.headsign });
+      }
+    }
+    return out.sort((a, b) => a.at - b.at).slice(0, n);
+  }
+
+  /** A day's departures by stop, made once. */
+  private departuresOf(index: DayIndex): Map<string, Array<{ t: number; trip: number; stop: number }>> {
+    if (index.departures) return index.departures;
+    const by = new Map<string, Array<{ t: number; trip: number; stop: number }>>();
+    index.trips.forEach((trip, i) => {
+      const run = this.runs[trip.run];
+      run.stops.forEach((st, k) => {
+        // The stops in the area a tram leaves from (not its last, where it goes on out of service or ends).
+        if (!st.stop || st.s < 0 || st.s > run.length || k === run.stops.length - 1) return;
+        if (!by.has(st.stop)) by.set(st.stop, []);
+        by.get(st.stop)!.push({ t: trip.times[2 * k + 1], trip: i, stop: k });
+      });
+    });
+    for (const list of by.values()) list.sort((a, b) => a.t - b.t);
+    index.departures = by;
+    return by;
   }
 
   /** A trip's tram `t` seconds into its service day, into `into`; false when it is not in the area. */

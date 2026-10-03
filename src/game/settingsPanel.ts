@@ -7,7 +7,7 @@ const SOURCES: Array<{ what: Source; name: string; url: string; licence?: { name
   { what: 'trains', name: 'SL, Trafiklab', url: 'https://www.trafiklab.se/' },
   { what: 'weather', name: 'Open-Meteo', url: 'https://open-meteo.com/', licence: { name: 'CC BY 4.0', url: 'https://creativecommons.org/licenses/by/4.0/' } },
   { what: 'warnings', name: 'SMHI', url: 'https://www.smhi.se/' },
-  { what: 'news', name: 'Sveriges Radio P4 Stockholm', url: 'https://www.sverigesradio.se/' },
+  { what: 'news', name: 'Sveriges Radio P4 Göteborg', url: 'https://www.sverigesradio.se/' },
   { what: 'map', name: '© OpenStreetMap', url: 'https://www.openstreetmap.org/copyright' },
 ];
 

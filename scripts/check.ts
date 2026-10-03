@@ -52,7 +52,8 @@ const SCRATCH = join(root, 'perf/.run');
 const LIMITS = {
   fps: {
     desktop: { fps: 57, slow: 2, hitches: 0, worst: 40, pixelRatio: 2 },
-    // The CPU six times slower: the heaviest scenes miss a frame now and then, which is the point of the test.
+    // The CPU slowed to a fixed phone's (`scripts/phoneCpu.ts`), the same on any computer: the heaviest scenes miss a
+    // frame now and then, which is the point of the test.
     phone: { fps: 54, slow: 10, hitches: 1, worst: 60, pixelRatio: 1.5 },
     // A real phone draws slower than the emulated one, and its GPU is the unknown: a floor, not a target.
     device: { fps: 45, slow: 25, hitches: 2, worst: 120, pixelRatio: 1 },
@@ -92,9 +93,11 @@ function judgeFps(profile: string, scene: string, r: Result): string[] {
 }
 
 /**
- * Whether something else keeps this computer busy before the frame rates are timed, which the phone's six times slower
- * CPU feels most: the load over the last minute against its cores, or another program using a whole core or more
- * (one busy app hardly moves the load of a machine with many cores, yet costs the timed frames). A note, never a failure.
+ * Whether something else keeps this computer busy before the frame rates are timed, which the phone's slowed CPU feels
+ * most: the load over the last minute against its cores, or another program using a whole core or more (one busy app
+ * hardly moves the load of a machine with many cores, yet costs the timed frames), or a Mac in Low Power Mode (the
+ * phone's CPU is measured to make up for it, `phoneCpu.ts`, but the desktop's GPU and the load times are not).
+ * A note, never a failure.
  */
 function machineBusy(): string | null {
   const load = loadavg()[0];
@@ -109,6 +112,9 @@ function machineBusy(): string | null {
       busy.push(`${m[2].split('/').pop()} at ${Math.round(Number(m[1]))}% CPU`);
     }
   } catch { /* No ps: the load alone. */ }
+  try {
+    if (/^\s*(powermode|lowpowermode)\s+1\b/m.test(Bun.spawnSync(['pmset', '-g']).stdout.toString())) busy.push('Low Power Mode on');
+  } catch { /* Not a Mac. */ }
   return busy.length ? `the machine was busy before timing: ${busy.join(', ')}` : null;
 }
 const fail = (what: string) => { failures.push(what); console.log(`  FAIL ${what}`); };

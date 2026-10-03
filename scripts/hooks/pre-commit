@@ -1,0 +1,5 @@
+#!/bin/sh
+# The secrets guard before every commit (scripts/hooks/secrets.ts): no key, token or password file reaches the public
+# repository. Installed by `bun install` (the `prepare` script points core.hooksPath here). The agent cannot skip it
+# (scripts/hooks/guard.ts blocks `git commit --no-verify`).
+exec bun scripts/hooks/secrets.ts

@@ -11,12 +11,12 @@
 //                          (also when GTFS has failed for longer than its last copy keeps)
 //   GET /feeds/deviations  data: SL's traffic information, as SL sends it
 //   GET /feeds/weather     data: Open-Meteo's answer, as it sends it
-//   GET /feeds/warnings    data: SMHI's warnings for Stockholms län only
-//   GET /feeds/news        data: [{ title, published }]   P4 Stockholm's news, for the newspapers
+//   GET /feeds/warnings    data: SMHI's warnings for Västra Götalands län only
+//   GET /feeds/news        data: [{ title, published }]   P4 Göteborg's news, for the newspapers
 
 import { SL_DEVIATIONS, slDepartures, SMHI_WARNINGS, SR_NEWS, WEATHER } from '../src/game/feeds';
 import { parseHeadlines } from '../src/game/news';
-import { forStockholm } from '../src/game/warnings';
+import { forCounty } from '../src/game/warnings';
 import { LINES } from '../src/landing/lines';
 
 const TIMEOUT_MS = 8000;
@@ -162,7 +162,7 @@ export function createFeeds(options: FeedOptions = {}): Feeds {
     },
     deviations: { ttl: 120, keep: 15 * 60, load: () => json(SL_DEVIATIONS) },
     weather: { ttl: 15 * 60, keep: 3 * 60 * 60, load: () => json(WEATHER) },
-    warnings: { ttl: 5 * 60, keep: 60 * 60, load: async () => forStockholm(await json(SMHI_WARNINGS)) },
+    warnings: { ttl: 5 * 60, keep: 60 * 60, load: async () => forCounty(await json(SMHI_WARNINGS)) },
     // The papers print yesterday's news, so a copy may be old; SR is asked twice an hour at most.
     news: { ttl: 30 * 60, keep: 24 * 60 * 60, load: async () => parseHeadlines(await (await source(SR_NEWS)).text()) },
   };

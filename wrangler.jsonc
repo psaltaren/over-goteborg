@@ -3,7 +3,7 @@
 // which runs the whole quality gate first.
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "under-stockholm",
+  "name": "over-goteborg",
   "main": "worker/index.ts",
   "compatibility_date": "2026-09-26",
   "assets": {
@@ -25,23 +25,15 @@
   // minute; this leaves room for a school or a mobile operator's shared address.
   "ratelimits": [{ "name": "LIMIT", "namespace_id": "1001", "simple": { "limit": 120, "period": 60 } }],
   "vars": {
-    // Requests a day other players may spend on the Durable Object, on Workers Paid: at most about $0.15 a day past
-    // the plan's included million a month (docs/DRIFT.md, section 3). Keep a number rather than `off`, which leaves no
-    // ceiling on the bill.
-    "GHOST_BUDGET": "1000000",
-    // Requests a day the feeds, notes and reports may spend, apart from the players' budget so neither can spend the
-    // other: at most about $0.05 a day. Each data center's cache answers most feeds, so the hub sees few of them.
-    "DATA_BUDGET": "300000"
+    // On Cloudflare's free plan, which allows 100,000 Durable Object requests a day. GHOST_BUDGET is left unset, so
+    // other players get the hub's free-plan default of 90,000 (worker/hub.ts), and the feeds, notes and reports get
+    // the rest. Together they stay inside the free plan, so no bill can come of it. On Workers Paid, raise both
+    // (docs/DRIFT.md, section 3), and keep numbers rather than `off`, which leaves no ceiling on the bill.
+    "DATA_BUDGET": "10000"
   },
-  // Secrets, set once with `bunx wrangler secret put <name>`: TRAFIKLAB_RT_KEY and TRAFIKLAB_STATIC_KEY (GTFS Regional,
-  // every line follows SL; without them the blue line alone, from the Transport API), NOTES_ADMIN_TOKEN (to take a
-  // note down).
-  // The game's address, with www too; the pages name the bare domain as canonical. The domain's DNS is on Cloudflare
-  // (registered at Spaceship, name servers pointed here). workers.dev stays on as a second way in for testing.
-  "routes": [
-    { "pattern": "understockholm.com", "custom_domain": true },
-    { "pattern": "www.understockholm.com", "custom_domain": true }
-  ],
+  // Secrets, set once with `bunx wrangler secret put <name>`: NOTES_ADMIN_TOKEN (to take a note down), and from P5 the
+  // Västtrafik key. Never in the client, never with a VITE_ prefix.
+  // No custom domain yet: the game lives on over-goteborg.<account>.workers.dev.
   "workers_dev": true,
   // Logs from the hub (a source failing, the GTFS timetable loading), kept a few days.
   "observability": { "enabled": true }

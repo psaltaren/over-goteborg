@@ -1,8 +1,8 @@
 import { expect, test } from 'bun:test';
-import { asNotice, forStockholm, parseWarnings, STOCKHOLM_COUNTY } from '../src/game/warnings';
+import { asNotice, forCounty, parseWarnings, COUNTY } from '../src/game/warnings';
 
 const now = Date.parse('2026-12-10T12:00:00Z') / 1000;
-const area = (id: number, level: string, start: string, end: string | undefined, county = STOCKHOLM_COUNTY, what = 'Snöfall') => ({
+const area = (id: number, level: string, start: string, end: string | undefined, county = COUNTY, what = 'Snöfall') => ({
   id,
   approximateStart: start,
   approximateEnd: end,
@@ -12,21 +12,21 @@ const area = (id: number, level: string, start: string, end: string | undefined,
 });
 const warning = (code: string, areas: object[]) => ({ id: 1, event: { code, sv: code }, warningAreas: areas });
 
-test('only Stockholms län is passed on, with its areas alone', () => {
+test('only Västra Götalands län is passed on, with its areas alone', () => {
   const body = [
     warning('SNOW', [area(1, 'YELLOW', '2026-12-10T06:00:00Z', undefined), area(2, 'YELLOW', '2026-12-10T06:00:00Z', undefined, 12)]),
-    warning('WIND', [area(3, 'YELLOW', '2026-12-10T06:00:00Z', undefined, 14)]),
+    warning('WIND', [area(3, 'YELLOW', '2026-12-10T06:00:00Z', undefined, 1)]),
   ];
-  const kept = forStockholm(body);
+  const kept = forCounty(body);
   expect(kept.length).toBe(1);
   expect(kept[0].warningAreas.map((a) => a.id)).toEqual([1]);
-  expect(forStockholm({ not: 'a list' })).toEqual([]);
+  expect(forCounty({ not: 'a list' })).toEqual([]);
 });
 
 test('warnings in force or starting soon count, most severe first; messages, the sea and water shortage do not', () => {
   const list = parseWarnings([
     warning('SNOW', [area(10, 'YELLOW', '2026-12-10T06:00:00Z', '2026-12-11T06:00:00Z')]),
-    warning('WIND', [area(11, 'ORANGE', '2026-12-10T15:00:00Z', undefined, STOCKHOLM_COUNTY, 'Mycket hårda vindbyar')]),
+    warning('WIND', [area(11, 'ORANGE', '2026-12-10T15:00:00Z', undefined, COUNTY, 'Mycket hårda vindbyar')]),
     warning('RAIN', [area(12, 'YELLOW', '2026-12-11T12:00:00Z', undefined)]),
     warning('RAIN', [area(13, 'YELLOW', '2026-12-09T06:00:00Z', '2026-12-10T06:00:00Z')]),
     warning('WATER_SHORTAGE', [area(14, 'MESSAGE', '2026-07-01T00:00:00Z', undefined)]),
@@ -36,7 +36,7 @@ test('warnings in force or starting soon count, most severe first; messages, the
   expect(list.map((w) => w.id)).toEqual([11, 10]);
   expect(list[0].header).toBe('Orange varning för mycket hårda vindbyar');
   expect(list[1].header).toBe('Gul varning för snöfall');
-  expect(list[1].summary).toContain('Stockholms län');
+  expect(list[1].summary).toContain('Västra Götalands län');
 });
 
 test('a warning reads like traffic information, with an id apart from SL\'s', () => {

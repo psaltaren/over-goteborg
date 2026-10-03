@@ -3,7 +3,7 @@
  * the same trains at the same moment and the metro follows Stockholm's day.
  */
 
-export const STOCKHOLM = { timeZone: 'Europe/Stockholm', lat: 59.33, lon: 18.07 };
+export const CITY = { timeZone: 'Europe/Stockholm', lat: 57.71, lon: 11.97 };
 
 export interface WallClock {
   year: number;
@@ -28,7 +28,7 @@ function offsetAt(epoch: number): number {
   const cached = offsets.get(hour);
   if (cached !== undefined) return cached;
   offsetFormat ??= new Intl.DateTimeFormat('en-US', {
-    timeZone: STOCKHOLM.timeZone, hourCycle: 'h23',
+    timeZone: CITY.timeZone, hourCycle: 'h23',
     year: 'numeric', month: 'numeric', day: 'numeric', hour: 'numeric', minute: 'numeric', second: 'numeric',
   });
   const parts: Record<string, number> = {};
@@ -116,8 +116,8 @@ export function sunElevation(epoch: number): number {
   const ra = Math.atan2(Math.cos(e) * Math.sin(L), Math.cos(L));
   const dec = Math.asin(Math.sin(e) * Math.sin(L));
   const gmst = (18.697374558 + 24.06570982441908 * d) % 24;
-  const ha = ((gmst + STOCKHOLM.lon / 15) * 15) * rad - ra;
-  const lat = STOCKHOLM.lat * rad;
+  const ha = ((gmst + CITY.lon / 15) * 15) * rad - ra;
+  const lat = CITY.lat * rad;
   return Math.asin(Math.sin(lat) * Math.sin(dec) + Math.cos(lat) * Math.cos(dec) * Math.cos(ha)) / rad;
 }
 

@@ -86,9 +86,9 @@ test('one station failing keeps its last list instead of failing the whole line'
   expect(await stations()).toBe(STATIONS.length);
 });
 
-test('SMHI is asked once and only Stockholms län is passed on; unknown feeds are refused', async () => {
+test('SMHI is asked once and only Västra Götalands län is passed on; unknown feeds are refused', async () => {
   const calls = countingFetch(() => [
-    { event: { code: 'SNOW' }, warningAreas: [{ id: 1, affectedAreas: [{ id: 1 }] }, { id: 2, affectedAreas: [{ id: 12 }] }] },
+    { event: { code: 'SNOW' }, warningAreas: [{ id: 1, affectedAreas: [{ id: 14 }] }, { id: 2, affectedAreas: [{ id: 1 }] }] },
   ]);
   const [a] = await Promise.all([ask('warnings'), ask('warnings'), ask('warnings')]);
   expect(calls.length).toBe(1);

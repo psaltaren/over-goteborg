@@ -843,8 +843,8 @@
   "warnings": {
     "header": "{level} varning för {event}",
     "levels": { "YELLOW": "Gul", "ORANGE": "Orange", "RED": "Röd" },
-    "now": "SMHI har utfärdat varningen för Stockholms län.",
-    "later": "SMHI varnar för Stockholms län under de närmaste timmarna.",
+    "now": "SMHI har utfärdat varningen för Västra Götalands län.",
+    "later": "SMHI varnar för Västra Götalands län under de närmaste timmarna.",
     "events": {
       "THUNDER": "åska",
       "WIND": "vind",

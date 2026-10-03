@@ -19,7 +19,7 @@ const CACHE = 'node_modules/.cache/terrain';
 const STEP = 150;
 /** How far past the outermost stations the grid reaches, in meters. */
 const MARGIN = 3000;
-const AGENT = 'under-stockholm/1.0 (https://understockholm.com)';
+const AGENT = 'over-goteborg/1.0 (https://github.com/psaltaren/over-goteborg)';
 
 // The inverse of `project`: meters east and north of T-Centralen back to latitude and longitude.
 const ORIGIN = GEO['T-Centralen'];

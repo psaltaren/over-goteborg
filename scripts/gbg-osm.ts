@@ -57,16 +57,12 @@ if (only !== 'tracks') {
   mkdirSync(dir, { recursive: true });
   for (const f of readdirSync(dir)) rmSync(`${dir}/${f}`);
   let written = 0, buildings = 0;
-  // The relations' rings and the coast, joined once in the city frame and moved to each square.
+  // The relations' rings and the coast, joined once in the city frame.
   const city = await streetParts(els, toGame);
   for (const tile of cityTiles()) {
     const [cx, cz] = [(tile.rect.x0 + tile.rect.x1) / 2, (tile.rect.z0 + tile.rect.z1) / 2];
-    // Each square in its own numbers, from its middle, as the street files are from a station's.
-    const shift = (p: Pt): Pt => [p[0] - cx, p[1] - cz];
-    const local = (lat: number, lon: number): Pt => shift(toGame(lat, lon));
-    const parts = new Map([...city.parts].map(([id, { outer, inner }]) => [id, { outer: outer.map((r) => r.map(shift)), inner: inner.map((r) => r.map(shift)) }]));
-    const coast = city.coast.map((c) => c.map(shift));
-    const layers = streetLayers(els, { parts, coast }, local, { cx: 0, cz: 0, hx: TILE / 2, hz: TILE / 2, round: false });
+    // Cut in the city frame, written in the square's own numbers from its middle, as the street files are from a station's.
+    const layers = streetLayers(els, city, toGame, { cx, cz, hx: TILE / 2, hz: TILE / 2, round: false }, [cx, cz]);
     if (!layers.buildings.length && !layers.roads.length && !layers.areas.length) continue;
     writeJson(`${dir}/${tile.key}.json`, {
       license: LICENSE,

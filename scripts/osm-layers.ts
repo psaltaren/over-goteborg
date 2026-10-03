@@ -3,7 +3,7 @@
  * water and trees, asked of Overpass in one go and cut to a region of the game's frame. What `scripts/osm-streets.ts`
  * (the streets out of a station's exits) and `scripts/gbg-osm.ts` (Gothenburg's city in squares) share.
  */
-import { colourOf, heightOf, overpass, packed, roofOf, simplify, type El, type Pt } from './osm-lib';
+import { colourOf, heightOf, overpass, packed as packedFrom, roofOf, simplify, type El, type Pt } from './osm-lib';
 
 /** How far a building's outline may be simplified, in meters. */
 const SIMPLIFY = 0.6;
@@ -222,10 +222,13 @@ export async function relationWhole(id: number): Promise<Array<{ role: string; p
  * them: buildings round a courtyard, parks), kept under `key`. `streetParts` then finds them without asking again.
  */
 export async function wholeRelations(els: El[], key: string): Promise<void> {
-  const ids = els.filter((e) => e.type === 'relation' && !lakes.has(e.id)).map((e) => e.id);
+  // Every relation `els` has, whether an earlier place asked for it or not, so what is kept under `key` is whole and a
+  // run from the cache does not depend on which places ran before it.
+  const ids = els.filter((e) => e.type === 'relation').map((e) => e.id);
   if (!ids.length) return;
   for (const rel of await overpass(`relation(id:${ids.join(',')});out geom;`, key)) lakes.set(rel.id, membersOf(rel));
-  for (const id of ids) if (!lakes.has(id)) lakes.set(id, []);
+  // One Overpass leaves out (deleted since) is fetched alone, as before.
+  for (const id of ids) if (!lakes.has(id)) await relationWhole(id);
 }
 
 /**
@@ -302,7 +305,9 @@ export function builtArea({ hx, hz, round }: Region): number {
  * The city within `region`: buildings whole where their middle lies within it, roads and ground cut to its square,
  * trees within it. A round region keeps buildings and trees within `hx` of its middle.
  */
-export function streetLayers(els: El[], { parts, coast }: { parts: Parts; coast: Pt[][] }, toGame: (lat: number, lon: number) => Pt, region: Region): Layers {
+export function streetLayers(els: El[], { parts, coast }: { parts: Parts; coast: Pt[][] }, toGame: (lat: number, lon: number) => Pt, region: Region, origin: Pt = [0, 0]): Layers {
+  // Measured in the frame given, written from `origin` (a city square from its middle, while the city is one frame).
+  const packed = (pts: Pt[]) => packedFrom(pts.map(([x, z]) => [x - origin[0], z - origin[1]] as Pt));
   const g = (geom: Array<{ lat: number; lon: number }>) => geom.map((p) => toGame(p.lat, p.lon));
   const { cx, cz, hx, hz, round } = region;
   const [x0, x1, z0, z1] = [cx - hx, cx + hx, cz - hz, cz + hz];
@@ -373,5 +378,5 @@ export function streetLayers(els: El[], { parts, coast }: { parts: Parts; coast:
   const trees = els.filter((e) => e.type === 'node' && e.tags?.natural === 'tree').map((e) => toGame(e.lat!, e.lon!)).filter(within).slice(0, 600);
   // Dense enough to be the city: paved between the houses; else grass.
   const urban = built / builtArea(region) > 0.24;
-  return { buildings: buildings.map((b) => b.b), roads: roads.map((r) => r.r), names, areas: areas.map((a) => a.a), trees, built, urban };
+  return { buildings: buildings.map((b) => b.b), roads: roads.map((r) => r.r), names, areas: areas.map((a) => a.a), trees: trees.map(([x, z]) => [x - origin[0], z - origin[1]] as Pt), built, urban };
 }

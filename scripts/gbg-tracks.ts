@@ -262,11 +262,15 @@ function toes(links: Link[]): number {
   let moved = 0;
   const into = (id: number) => links.filter((l) => l.next.includes(id));
   const fromNode = new Map<number, number>();
-  /** A toe moved back from junction `node`: numbered from it, so the same toe gets the same id each build. */
+  /**
+   * A toe moved back from junction `node`: numbered from the OSM node it comes from in the end (a toe moved from a toe
+   * counts with its node's), so each id is used once and the same toe gets the same id each build.
+   */
   const toeNode = (node: number) => {
-    const k = (fromNode.get(node) ?? 0) + 1;
-    fromNode.set(node, k);
-    return TOE_NODE * k + node;
+    const base = node % TOE_NODE;
+    const k = (fromNode.get(base) ?? 0) + 1;
+    fromNode.set(base, k);
+    return TOE_NODE * k + base;
   };
   const hermite = (a: Pt, ta: Pt, b: Pt, tb: Pt): Pt[] => {
     const m = dist(a, b);

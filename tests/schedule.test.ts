@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import schedule from '../src/game/city/osm/schedule.json';
 import tracks from '../src/game/city/osm/tracks.json';
-import { blocksIn, covered, DAYS, runBlocks, runPieces, runPosition, type ScheduleFile } from '../src/game/city/schedule';
+import { blocksIn, covered, DAYS, NIGHT_BEFORE, runBlocks, runPieces, runPosition, type ScheduleFile, type Trip } from '../src/game/city/schedule';
 import { readLinks, type TrackFile } from '../src/game/city/trackData';
 
 const file = schedule as unknown as ScheduleFile;
@@ -51,6 +51,17 @@ describe('the trams\' day', () => {
     }
   });
 
+  test('has a tram standing at any stop in the area take up track, the whole time it stands', () => {
+    // So a tram waiting at a terminus is seen by the block pass and this test, not only once it moves.
+    for (const r of file.runs) for (const s of r.stops) if (s.s >= 0 && s.s <= r.length) expect(covered(r, s.s)).not.toBeNull();
+    for (const day of DAYS) {
+      for (const trip of file[day]) {
+        const r = file.runs[trip.run], n = r.stops.length;
+        if (r.stops[n - 1].s <= r.length) expect(runPosition(r, trip.times, trip.times[2 * n - 1])).toBe(r.stops[n - 1].s);
+      }
+    }
+  });
+
   test('holds trams a little, not long: the queues at the busy stops', () => {
     for (const day of DAYS) {
       const held = file[day].map((t) => t.held ?? 0).sort((a, b) => a - b);
@@ -65,10 +76,14 @@ describe('the trams\' day', () => {
     conflicts.set(a, [...(conflicts.get(a) ?? []), b]);
     conflicts.set(b, [...(conflicts.get(b) ?? []), a]);
   }
-  for (const day of DAYS) {
-    test(`keeps every tram clear of every other, every second of a ${day}`, () => {
-      const trips = [...file[day]].sort((a, b) => a.times[0] - b.times[0]);
-      const t0 = trips[0].times[0], t1 = Math.max(...trips.map((t) => t.times[t.times.length - 1]));
+  // Each kind of day with each night that can come before it (a Monday morning follows Sunday night, a Tuesday morning
+  // a weekday's).
+  for (const [day, before] of DAYS.flatMap((d) => NIGHT_BEFORE[d].map((b) => [d, b] as const))) {
+    test(`keeps every tram clear of every other, every second of a ${day} after a ${before} night`, () => {
+      // The trams of the night before still out after midnight, on this day's clock.
+      const night: Trip[] = file[before].filter((t) => t.times[t.times.length - 1] >= 86_400).map((t) => ({ run: t.run, times: t.times.map((v) => v - 86_400) }));
+      const trips = [...file[day], ...night].sort((a, b) => a.times[0] - b.times[0]);
+      const t0 = Math.max(0, trips[0].times[0]), t1 = Math.max(...trips.map((t) => t.times[t.times.length - 1]));
       const clashes: string[] = [];
       let next = 0;
       let active: number[] = [];

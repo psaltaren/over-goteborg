@@ -11,6 +11,12 @@ import type { Pt } from './geo';
 export const DAYS = ['weekday', 'saturday', 'sunday'] as const;
 export type Day = (typeof DAYS)[number];
 
+/**
+ * The days whose last trams run on past midnight into each kind of day: a weekday's night runs into the next weekday,
+ * and Sunday's into Monday; Friday's (a weekday's, here) into Saturday; Saturday's into Sunday.
+ */
+export const NIGHT_BEFORE: Record<Day, Day[]> = { weekday: ['weekday', 'sunday'], saturday: ['weekday'], sunday: ['saturday'] };
+
 export interface RunStop {
   /** Västtrafik's stop point (a platform), its name and platform letter. */
   stop: string;
@@ -83,11 +89,12 @@ export function hop(d: number, duration: number, t: number): number {
 
 /**
  * Where along its run a trip's tram is at `t` (seconds into the service day): meters along the run, before 0 or past
- * its length while coming or going out of sight, or null before the trip starts and after it ends.
+ * its length while coming or going out of sight, or null before it arrives at its first stop and after it leaves its
+ * last (a tram at a terminus in the area stands there from its arrival to its departure).
  */
 export function runPosition(run: Run, times: number[], t: number): number | null {
   const n = run.stops.length;
-  if (t < times[0] || t > times[2 * (n - 1)]) return null;
+  if (t < times[0] || t > times[2 * n - 1]) return null;
   for (let i = 0; i < n; i++) {
     const arr = times[2 * i], dep = times[2 * i + 1];
     if (t <= dep) return t >= arr ? run.stops[i].s : null;
@@ -115,11 +122,27 @@ export function runPieces(run: Run, links: Link[]): Array<{ link: number; at: nu
   return out;
 }
 
-/** The point `s` meters along a run, in the city frame. */
-export function runPoint(run: Run, links: Link[], s: number): Pt {
-  const pieces = runPieces(run, links);
-  const p = pieces.find((q) => s <= q.at + (q.s1 - q.s0)) ?? pieces[pieces.length - 1];
-  return pointAt(links[p.link].pts, p.s0 + Math.max(0, s - p.at));
+/**
+ * A run's track, its pieces worked out once: the point `s` meters along it, in the city frame. Make one per run and
+ * keep it; the game asks every tram's position every frame.
+ */
+export class RunPath {
+  readonly pieces: Array<{ link: number; at: number; s0: number; s1: number }>;
+
+  constructor(run: Run, private readonly links: Link[]) {
+    this.pieces = runPieces(run, links);
+  }
+
+  point(s: number): Pt {
+    let p = this.pieces[this.pieces.length - 1];
+    for (const q of this.pieces) {
+      if (s <= q.at + (q.s1 - q.s0)) {
+        p = q;
+        break;
+      }
+    }
+    return pointAt(this.links[p.link].pts, p.s0 + Math.max(0, s - p.at));
+  }
 }
 
 /**

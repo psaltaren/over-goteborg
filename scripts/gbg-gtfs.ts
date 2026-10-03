@@ -7,23 +7,25 @@
  *   bun scripts/gbg-gtfs.ts            (from the feed kept; fetched once if there is none)
  *   bun scripts/gbg-gtfs.ts --fetch    (a fresh feed: one of the month's 50 downloads)
  *
- * 1. Days. A Wednesday, a Saturday and a Sunday in the feed's first whole week stand for every weekday, Saturday and
- *    Sunday: the game shows the timetable of the kind of day it is.
+ * 1. Days. A Wednesday, a Saturday and a Sunday stand for every weekday, Saturday and Sunday: the first of each in the
+ *    five weeks after the feed's date that runs the usual number of trips for its weekday (not a public holiday) and on
+ *    which the clocks do not change. The game shows the timetable of the kind of day it is.
  * 2. Runs. Each tram route's shape is matched to the tracks (`scripts/gbg-match.ts`); a run is its stretch through the
  *    area, with the stops on it, and the stop before and the one after, out of sight.
  * 3. Trips. Each trip's times at the run's stops, with time to stand at a stop (`DWELL`) where the timetable leaves
  *    none, and a minute at a terminus in the area before setting off.
- * 4. Blocks. The day is run trip by trip in the order they come in: a tram that would enter a block another holds, or
- *    one that conflicts with it (`tracks.json`), is held at the stop before for as long as it takes, and the rest of its
- *    trip moves on by as much. The test (`tests/schedule.test.ts`) then checks every second of each day.
+ * 4. Blocks. The day is run trip by trip in the order they reach the junctions: a tram that would enter a block another
+ *    holds, or one that conflicts with it (`tracks.json`), is held at the stop before for as long as it takes, and the
+ *    rest of its trip moves on by as much. The trams of the night before that run past midnight hold their blocks too.
+ *    The test (`tests/schedule.test.ts`) then checks every second of each day, the night before's trams with it.
  */
 import { existsSync, mkdirSync, statSync } from 'node:fs';
 import { grow, PLAY, toGame, TRACK_REACH, type Pt } from '../src/game/city/geo';
-import { blocksIn, covered, DAYS, runBlocks, runPieces, runPosition, type Day, type Run, type RunStop, type ScheduleFile, type Trip } from '../src/game/city/schedule';
-import { pointAt, readLinks, type TrackFile } from '../src/game/city/trackData';
-import { TRAM_ACCEL } from '../src/game/layout';
+import { blocksIn, covered, DAYS, NIGHT_BEFORE, runBlocks, runPieces, runPosition, type Day, type Run, type RunStop, type ScheduleFile, type Trip } from '../src/game/city/schedule';
+import { endDir, pointAt, polylineLength, prevsOf, readLinks, startDir, turn, type TrackFile } from '../src/game/city/trackData';
+import { TRAM_ACCEL, TRAM_LENGTH } from '../src/game/layout';
 import { splitCsv } from '../server/gtfs';
-import { Matcher, nearestAlong } from './gbg-match';
+import { Matcher, nearestAlong, type Matched } from './gbg-match';
 import { project } from './gbg-tracks';
 import { writeJson } from './osm-lib';
 
@@ -95,15 +97,36 @@ const [feed] = await rows('feed_info.txt');
 const routes = new Map((await rows('routes.txt', (r) => r.route_type === TRAM)).map((r) => [r.route_id, r.route_short_name]));
 const trips = new Map((await rows('trips.txt', (r) => routes.has(r.route_id))).map((r) => [r.trip_id, r]));
 
-// The days: the first Wednesday, Saturday and Sunday after the feed's date, each with the services running on it.
+// The days. Each date's tram trips, counted; for each kind of day the first in the five weeks after the feed's date
+// that runs the usual number for its weekday (a public holiday runs fewer, a Sunday's timetable) and on which the clocks
+// do not change.
 const calendar = await rows('calendar_dates.txt', (r) => r.exception_type === '1');
-const start = new Date(`${feed.feed_version}T12:00:00Z`);
+const perService = new Map<string, number>();
+for (const t of trips.values()) perService.set(t.service_id, (perService.get(t.service_id) ?? 0) + 1);
+const perDate = new Map<string, number>();
+for (const r of calendar) perDate.set(r.date, (perDate.get(r.date) ?? 0) + (perService.get(r.service_id) ?? 0));
+const feedDate = /^\d{4}-?\d{2}-?\d{2}$/.test(feed.feed_version) ? feed.feed_version.replace(/-/g, '') : [...perDate.keys()].sort()[0];
+const asDate = (key: string) => new Date(Date.UTC(Number(key.slice(0, 4)), Number(key.slice(4, 6)) - 1, Number(key.slice(6, 8)), 12));
+const keyOf = (d: Date) => d.toISOString().slice(0, 10).replace(/-/g, '');
+/** Whether Stockholm's clocks change during the day (the offset at its noon differs from the next day's). */
+const clocksChange = (d: Date) => {
+  const offset = (x: Date) => new Intl.DateTimeFormat('en', { timeZone: 'Europe/Stockholm', timeZoneName: 'shortOffset' }).formatToParts(x).find((p) => p.type === 'timeZoneName')!.value;
+  return offset(d) !== offset(new Date(d.getTime() + 86_400_000));
+};
 const dates = {} as Record<Day, string>;
 for (const [day, weekday] of [['weekday', 3], ['saturday', 6], ['sunday', 0]] as Array<[Day, number]>) {
-  const d = new Date(start);
-  d.setUTCDate(d.getUTCDate() + 1);
-  while (d.getUTCDay() !== weekday) d.setUTCDate(d.getUTCDate() + 1);
-  dates[day] = d.toISOString().slice(0, 10).replace(/-/g, '');
+  const candidates: Date[] = [];
+  for (let k = 1; k <= 35; k++) {
+    const d = asDate(feedDate);
+    d.setUTCDate(d.getUTCDate() + k);
+    if (d.getUTCDay() === weekday && perDate.has(keyOf(d))) candidates.push(d);
+  }
+  const counts = new Map<number, number>();
+  for (const d of candidates) counts.set(perDate.get(keyOf(d))!, (counts.get(perDate.get(keyOf(d))!) ?? 0) + 1);
+  const usual = [...counts].sort((a, b) => b[1] - a[1] || b[0] - a[0])[0]?.[0];
+  const pick = candidates.find((d) => perDate.get(keyOf(d)) === usual && !clocksChange(d));
+  if (!pick) throw new Error(`No ordinary ${day} in the five weeks after the feed's date (${feedDate}).`);
+  dates[day] = keyOf(pick);
 }
 const running = Object.fromEntries(DAYS.map((day) => [day, new Set(calendar.filter((r) => r.date === dates[day]).map((r) => r.service_id))])) as Record<Day, Set<string>>;
 const wanted = new Set([...trips.values()].filter((t) => DAYS.some((day) => running[day].has(t.service_id))).map((t) => t.trip_id));
@@ -128,10 +151,12 @@ for (const r of await rows('shapes.txt', (r) => usedShapes.has(r.shape_id))) {
 
 const tracks = (await Bun.file('src/game/city/osm/tracks.json').json()) as TrackFile;
 const links = readLinks(tracks);
-const matcher = new Matcher(links, grow(PLAY, TRACK_REACH));
+const prevs = prevsOf(links);
+const keep = grow(PLAY, TRACK_REACH);
+const matcher = new Matcher(links, keep);
 const report: string[] = [];
 
-/** A run's track as one polyline, for putting its stops on it. */
+/** A run's track as one polyline (a point a meter), for putting its stops on it. */
 const runLine = (run: Pick<Run, 'links' | 'from' | 'to'>): Pt[] => {
   const pts: Pt[] = [];
   for (const p of runPieces({ ...run, length: 0, id: 0, line: '', headsign: '', stops: [] }, links)) {
@@ -141,16 +166,102 @@ const runLine = (run: Pick<Run, 'links' | 'from' | 'to'>): Pt[] => {
   return pts;
 };
 
+/** The straightest of `options` to come to link `to` from, or go on to from link `from`. */
+const straightest = (options: number[], at: (id: number) => number) => options.map((id) => ({ id, t: at(id) })).sort((a, b) => a.t - b.t)[0]?.id;
+
+/**
+ * A run's start moved `meters` back along the track a tram comes in on, link by link, as far as there is track: so a
+ * tram standing at a terminus where its run starts has its whole length on the run. Back toward `stop` where the run
+ * has to reach a stop it starts before (the way that passes nearest it), else the straightest way.
+ */
+function extendBack(m: Matched, meters: number, stop: Pt | null): Matched {
+  let { links: ids, from } = m;
+  ids = [...ids];
+  let need = meters;
+  while (need > 0) {
+    if (from >= need) {
+      from -= need;
+      need = 0;
+      break;
+    }
+    need -= from;
+    const first = links[ids[0]];
+    const options = prevs[first.id].filter((id) => id !== first.twin);
+    const p = stop ? options.map((id) => ({ id, d: project(links[id].pts, stop).d })).sort((a, b) => a.d - b.d)[0]?.id
+      : straightest(options, (id) => turn(endDir(links[id].pts), startDir(first.pts)));
+    if (p === undefined) {
+      from = 0;
+      break;
+    }
+    ids.unshift(p);
+    from = links[p].length;
+  }
+  return { ...m, links: ids, from, u0: m.u0 - (meters - need) };
+}
+
+/** A run's end moved `meters` on along the track ahead, as far as there is track. */
+function extendOn(m: Matched, meters: number): Matched {
+  let { links: ids, to } = m;
+  ids = [...ids];
+  let need = meters;
+  while (need > 0) {
+    const last = links[ids[ids.length - 1]];
+    if (last.length - to >= need) {
+      to += need;
+      need = 0;
+      break;
+    }
+    need -= last.length - to;
+    const n = straightest(last.next.filter((id) => id !== last.twin), (id) => turn(endDir(last.pts), startDir(links[id].pts)));
+    if (n === undefined) {
+      to = last.length;
+      break;
+    }
+    ids.push(n);
+    to = 0;
+  }
+  return { ...m, links: ids, to, u1: m.u1 + (meters - need) };
+}
+
+/**
+ * Where a terminus lies beside a run's track rather than on it (the matching kept to the through track where the shape
+ * turns off onto a terminal track in its last few meters), the run's end taken through one of the last few junctions
+ * onto the track that passes nearest the stop. `end` says which end: the last stop, or (going back) the first.
+ */
+function snap(m: Matched, stop: Pt, end: 'last' | 'first'): Matched {
+  if (project(runLine(m), stop).d <= 3) return m;
+  let best: { ids: number[]; s: number; d: number } | null = null;
+  const forward = end === 'last';
+  const ids = forward ? m.links : [...m.links].reverse();
+  for (let k = ids.length - 1; k >= Math.max(0, ids.length - 4); k--) {
+    const explore = (path: number[], depth: number) => {
+      const l = links[path[path.length - 1]];
+      const pr = project(l.pts, stop);
+      if (path.length > 1 && pr.d < (best?.d ?? 3)) best = { ids: [...ids.slice(0, k), ...path], s: pr.s, d: pr.d };
+      if (depth >= 3) return;
+      for (const n of forward ? l.next : prevs[l.id]) if (n !== l.twin) explore([...path, n], depth + 1);
+    };
+    explore([ids[k]], 0);
+  }
+  if (!best) return m;
+  const b = best as { ids: number[]; s: number; d: number };
+  if (forward) return { ...m, links: b.ids, to: Math.min(links[b.ids[b.ids.length - 1]].length, b.s + 1) };
+  const back = [...b.ids].reverse();
+  return { ...m, links: back, from: Math.max(0, b.s - 1) };
+}
+
 const runs: Run[] = [];
 const runKey = new Map<string, number>();
-/** For each pattern (a shape and its stops): its runs, each with the index in the trip's stop list of each run stop. */
-const patterns = new Map<string, Array<{ run: number; at: number[]; first: boolean; last: boolean }>>();
+type RunUse = { run: number; at: number[]; first: boolean; last: boolean };
+/** For each pattern (a route, its shape, its stops and its signs): its runs, with the trip's stop index of each run stop. */
+const patterns = new Map<string, RunUse[]>();
 const dropped = new Map<string, number>();
+const inKeep = ([x, z]: Pt) => x >= keep.x0 && x <= keep.x1 && z >= keep.z0 && z <= keep.z1;
 
-function runsOf(tripId: string): Array<{ run: number; at: number[]; first: boolean; last: boolean }> {
+function runsOf(tripId: string): RunUse[] {
   const trip = trips.get(tripId)!;
   const list = times.get(tripId)!;
-  const key = `${trip.shape_id}|${list.map((x) => x.stop).join(',')}`;
+  const key = `${trip.route_id}|${trip.shape_id}|${list.map((x) => `${x.stop}:${x.headsign}`).join(',')}`;
   if (patterns.has(key)) return patterns.get(key)!;
   const shape = (shapePts.get(trip.shape_id) ?? []).sort((a, b) => a[0] - b[0]).map((x) => x[1]);
   const along: number[] = [0];
@@ -158,16 +269,28 @@ function runsOf(tripId: string): Array<{ run: number; at: number[]; first: boole
   // Each stop's place along the shape, in order.
   const u: number[] = [];
   for (const x of list) u.push(nearestAlong(shape, along, stops.get(x.stop)!.at, u.length ? u[u.length - 1] : 0));
-  const out: Array<{ run: number; at: number[]; first: boolean; last: boolean }> = [];
-  for (const m of shape.length > 1 ? matcher.match(shape) : []) {
+  const out: RunUse[] = [];
+  const end = list.length - 1;
+  for (let m of shape.length > 1 ? matcher.match(shape) : []) {
+    // A terminus in the area belongs to the run even where the matching left off the shape's last meters before it.
+    const startsHere = inKeep(stops.get(list[0].stop)!.at) && u[0] < m.u0 + 1 && m.u0 - u[0] < 60;
+    const endsHere = inKeep(stops.get(list[end].stop)!.at) && u[end] > m.u1 - 1 && u[end] - m.u1 < 60;
+    if (endsHere && u[end] > m.u1) m = extendOn(m, u[end] - m.u1 + 1);
+    if (endsHere) m = snap(m, stops.get(list[end].stop)!.at, 'last');
+    if (startsHere) m = snap(m, stops.get(list[0].stop)!.at, 'first');
+    // A tram standing at a terminus where its run starts has its whole length on the run, on the track it came in on:
+    // the run starts that far back behind the stop (`room` is how much it has already, below 0 if the stop lies before).
+    const room = u[0] - m.u0;
+    if (startsHere || (room >= 0 && room <= TRAM_LENGTH)) m = extendBack(m, TRAM_LENGTH + 5 - room, room < 0 ? stops.get(list[0].stop)!.at : null);
     const line = runLine(m);
-    const length = line.reduce((sum, p, i) => (i ? sum + Math.hypot(p[0] - line[i - 1][0], p[1] - line[i - 1][1]) : 0), 0);
-    const inside = list.map((_, i) => i).filter((i) => u[i] >= m.u0 - 5 && u[i] <= m.u1 + 5);
+    const length = polylineLength(line);
+    const inside = list.map((_, i) => i).filter((i) => u[i] >= m.u0 && u[i] <= m.u1);
     const runStops: RunStop[] = [];
     const at: number[] = [];
     let before = inside.length ? inside[0] - 1 : -1;
     if (!inside.length) for (let i = 0; i < list.length; i++) if (u[i] < m.u0) before = i;
-    const after = inside.length ? inside[inside.length - 1] + 1 : list.findIndex((_, i) => u[i] > m.u1);
+    let after = inside.length ? inside[inside.length - 1] + 1 : -1;
+    if (!inside.length) after = list.findIndex((_, i) => u[i] > m.u1);
     if (before >= 0) {
       runStops.push(stopAt(list[before].stop, Math.min(-1, -(m.u0 - u[before])), 0));
       at.push(before);
@@ -191,13 +314,16 @@ function runsOf(tripId: string): Array<{ run: number; at: number[]; first: boole
       dropped.set(why, (dropped.get(why) ?? 0) + 1);
       continue;
     }
-    const headsign = list[0].headsign || stops.get(list[list.length - 1].stop)!.name;
+    // The sign a tram on the run shows: as the timetable has it at the run's first stop in the area (it changes along
+    // many trips), else where the trip ends.
+    const signAt = inside.length ? inside[0] : Math.max(0, before);
+    const headsign = list[signAt].headsign || stops.get(list[end].stop)!.name;
     const k = `${m.links.join(',')}|${m.from.toFixed(1)}|${m.to.toFixed(1)}|${runStops.map((x) => `${x.stop}@${x.s.toFixed(1)}`).join(',')}|${routes.get(trip.route_id)}|${headsign}`;
     if (!runKey.has(k)) {
       runKey.set(k, runs.length);
       runs.push({ id: runs.length, line: routes.get(trip.route_id)!, headsign, links: m.links, from: round2(m.from), to: round2(m.to), length: round2(length), stops: runStops });
     }
-    out.push({ run: runKey.get(k)!, at, first: before < 0, last: after < 0 || after >= list.length });
+    out.push({ run: runKey.get(k)!, at, first: before < 0 && inside[0] === 0, last: (after < 0 || after >= list.length) && inside[inside.length - 1] === end });
   }
   patterns.set(key, out);
   return out;
@@ -225,7 +351,7 @@ for (const day of DAYS) {
       const t: number[] = [];
       at.forEach((i, k) => {
         let arr = list[i].arr;
-        const dep = list[i].dep;
+        let dep = list[i].dep;
         const inArea = r.stops[k].s >= 0 && r.stops[k].s <= r.length;
         if (inArea && k > 0) {
           // Time to stand, taken from the hop before as far as the hop allows (no faster than speeding up and slowing
@@ -234,10 +360,11 @@ for (const day of DAYS) {
           const fastest = 2 * Math.sqrt((r.stops[k].s - r.stops[k - 1].s) / TRAM_ACCEL);
           arr = Math.max(Math.min(arr, dep - DWELL), Math.min(arr, prevDep + fastest));
         }
+        // At a terminus in the area the tram stands a while before it sets off, and after it arrives.
         if (k === 0 && first && inArea) arr = dep - LAYOVER_BEFORE;
+        if (k === at.length - 1 && last && inArea) dep = arr + LAYOVER_AFTER;
         t.push(arr, dep);
       });
-      if (last && r.stops[r.stops.length - 1].s <= r.length) t[t.length - 1] = t[t.length - 2] + LAYOVER_AFTER;
       days[day].push({ run, times: t });
     }
   }
@@ -249,8 +376,10 @@ if (dropped.size) report.push(`WARN runs left out (a stop further than ${STOP_OF
 const along = runs.map((r) => runBlocks(r, links, tracks.blocks));
 const conflictsOf = new Map<number, number[]>();
 for (const [a, b] of tracks.conflicts) {
-  conflictsOf.set(a, [...(conflictsOf.get(a) ?? []), b]);
-  conflictsOf.set(b, [...(conflictsOf.get(b) ?? []), a]);
+  if (!conflictsOf.has(a)) conflictsOf.set(a, []);
+  if (!conflictsOf.has(b)) conflictsOf.set(b, []);
+  conflictsOf.get(a)!.push(b);
+  conflictsOf.get(b)!.push(a);
 }
 
 /** When a trip's tram is in each block: its first and last second there. */
@@ -271,13 +400,15 @@ function occupancy(trip: Trip): Map<number, [number, number]> {
   return out;
 }
 
-for (const day of DAYS) {
-  // First come, first served: in the order the trams reach the first block where they could meet another (a junction,
-  // or the area's first block if they meet none), so a tram that gets to Drottningtorget first goes first, whichever
-  // came into the area first.
+/**
+ * One kind of day's block pass, with the blocks the night before holds already taken: its trips in the order they
+ * reach the first block where they could meet another (first come, first served, so a tram that gets to Drottningtorget
+ * first goes first, whichever came into the area first), each held at the stop before a clash for as long as it takes.
+ */
+function blockPass(day: Day, night: Map<number, Array<[number, number]>>) {
   const list = days[day].map((trip) => ({ trip, enter: firstContested(trip) })).filter((x) => x.enter !== null).sort((a, b) => a.enter! - b.enter!);
-  const held = new Map<number, Array<[number, number]>>();
-  let holds = 0, most = 0, stuck = 0;
+  const held = new Map<number, Array<[number, number]>>([...night].map(([b, spans]) => [b, [...spans]]));
+  let holds = 0, stuck = 0;
   for (const { trip } of list) {
     let tries = 0;
     for (; tries < 60; tries++) {
@@ -292,23 +423,51 @@ for (const day of DAYS) {
         }
       }
       if (!clash) {
-        for (const [b, span] of occ) held.set(b, [...(held.get(b) ?? []), span]);
+        for (const [b, span] of occ) {
+          if (!held.has(b)) held.set(b, []);
+          held.get(b)!.push(span);
+        }
         break;
       }
-      // Hold the tram at the last stop it leaves before the clash, by as long as the other needs.
+      // Hold the tram at the last stop it leaves before the clash, by as long as the other needs; a clash while it still
+      // stands at its first stop moves the whole trip on (it comes in, or sets out, that much later).
       const shift = Math.max(1, clash.until - clash.at);
-      let k = 0;
-      for (let i = 0; i < runs[trip.run].stops.length; i++) if (trip.times[2 * i + 1] <= clash.at) k = i;
-      for (let j = 2 * k + 1; j < trip.times.length; j++) trip.times[j] += shift;
+      let from = 0;
+      for (let i = 0; i < runs[trip.run].stops.length; i++) if (trip.times[2 * i + 1] <= clash.at) from = 2 * i + 1;
+      for (let j = from; j < trip.times.length; j++) trip.times[j] += shift;
       trip.held = (trip.held ?? 0) + shift;
       holds++;
-      most = Math.max(most, trip.held);
     }
     if (tries >= 60) stuck++;
   }
+  return { holds, stuck, held };
+}
+
+/** The blocks a day's trams hold after its midnight, on the next day's clock. */
+function pastMidnight(held: Map<number, Array<[number, number]>>): Map<number, Array<[number, number]>> {
+  const out = new Map<number, Array<[number, number]>>();
+  for (const [b, spans] of held) {
+    const late = spans.filter(([, z]) => z >= 86_400).map(([a, z]) => [a - 86_400, z - 86_400] as [number, number]);
+    if (late.length) out.set(b, late);
+  }
+  return out;
+}
+
+// Twice: once alone, then each day again with what the night before it holds taken from the first round. The nights
+// run late in the evening, which the morning's holds do not reach, so they come out of the second round the same.
+const original = Object.fromEntries(DAYS.map((d) => [d, days[d].map((t) => [...t.times])])) as Record<Day, number[][]>;
+const firstRound = Object.fromEntries(DAYS.map((d) => [d, blockPass(d, new Map()).held])) as Record<Day, Map<number, Array<[number, number]>>>;
+for (const day of DAYS) {
+  days[day].forEach((t, i) => {
+    t.times = [...original[day][i]];
+    delete t.held;
+  });
+  const night = new Map<number, Array<[number, number]>>();
+  for (const before of NIGHT_BEFORE[day]) for (const [b, spans] of pastMidnight(firstRound[before])) night.set(b, [...(night.get(b) ?? []), ...spans]);
+  const { holds, stuck } = blockPass(day, night);
   const all = days[day].map((t) => t.held ?? 0).sort((a, b) => a - b);
   const median = all[Math.floor(all.length / 2)], p90 = all[Math.floor(all.length * 0.9)];
-  report.push(`${day} (${dates[day]}): ${days[day].length} trips through the area, ${days[day].filter((t) => t.held).length} held (${holds} holds), held a median ${median} s, 90% under ${p90} s, at most ${most} s${stuck ? `; WARN ${stuck} could not be cleared` : ''}`);
+  report.push(`${day} (${dates[day]}): ${days[day].length} trips through the area, ${days[day].filter((t) => t.held).length} held (${holds} holds), held a median ${median} s, 90% under ${p90} s, at most ${all[all.length - 1]} s${stuck ? `; WARN ${stuck} could not be cleared` : ''}`);
 }
 
 function firstContested(trip: Trip): number | null {
@@ -336,8 +495,8 @@ for (const day of DAYS) {
 const file: Omit<ScheduleFile, 'runs' | Day> = {
   license: LICENSE,
   format: 'bun scripts/gbg-gtfs.ts. runs: a route\'s stretch through the area, along links of tracks.json (from meters into the first, to into the last), ' +
-    'with its stops (s in meters along the run; the stop before the area below 0, the one after past its length). days: per kind of day, each trip as its run ' +
-    'and [arrival, departure] at each of the run\'s stops in seconds from the service day\'s start (noon less 12 h), held: seconds the block pass held it.',
+    'with its stops (s in meters along the run; the stop before the area below 0, the one after past its length). Per kind of day (weekday, saturday, sunday), ' +
+    'each trip as its run and [arrival, departure] at each of the run\'s stops in seconds from the service day\'s start (noon less 12 h), held: seconds the block pass held it.',
   feed: feed.feed_version,
   dates,
 };

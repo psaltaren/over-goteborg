@@ -8,7 +8,7 @@
  * side, and which way through a junction.
  */
 import type { Pt, Rect } from '../src/game/city/geo';
-import { polylineLength, type Link } from '../src/game/city/trackData';
+import { pointAt, polylineLength, type Link } from '../src/game/city/trackData';
 import { clipLine } from './osm-layers';
 
 /** Samples this far apart along the shape. */
@@ -136,7 +136,7 @@ export class Matcher {
     const samples: Array<{ p: Pt; dir: Pt; u: number }> = [];
     for (let k = 0; k <= n; k++) {
       const u = (length * k) / n;
-      const p = at(piece, u), q = at(piece, Math.min(length, u + 2)), r = at(piece, Math.max(0, u - 2));
+      const p = pointAt(piece, u), q = pointAt(piece, Math.min(length, u + 2)), r = pointAt(piece, Math.max(0, u - 2));
       const dx = q[0] - r[0], dz = q[1] - r[1], d = Math.hypot(dx, dz) || 1;
       samples.push({ p, dir: [dx / d, dz / d], u });
     }
@@ -212,16 +212,6 @@ export class Matcher {
     const to = end.to < 0 ? end.length : chosen[chosen.length - 1].s;
     return { links, from, to, worst: Math.max(...chosen.map((c) => c.d)) };
   }
-}
-
-/** The point `u` meters along a polyline. */
-function at(pts: Pt[], u: number): Pt {
-  for (let i = 0; i + 1 < pts.length; i++) {
-    const d = Math.hypot(pts[i + 1][0] - pts[i][0], pts[i + 1][1] - pts[i][1]);
-    if (u <= d) return d > 0 ? [pts[i][0] + ((pts[i + 1][0] - pts[i][0]) * u) / d, pts[i][1] + ((pts[i + 1][1] - pts[i][1]) * u) / d] : pts[i];
-    u -= d;
-  }
-  return pts[pts.length - 1];
 }
 
 /** How far along a polyline (with `along` its points' distances) the point nearest `p` lies. */

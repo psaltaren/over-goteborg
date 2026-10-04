@@ -13,11 +13,15 @@
 //   GET /feeds/weather     data: Open-Meteo's answer, as it sends it
 //   GET /feeds/warnings    data: SMHI's warnings for Västra Götalands län only
 //   GET /feeds/news        data: [{ title, published }]   P4 Göteborg's news, for the newspapers
+//   GET /feeds/vt          data: { departures, areas }    the trams' departures at the stop areas in the city from
+//                          Västtrafik (server/vasttrafik.ts), with VASTTRAFIK_KEY
+//   GET /feeds/situations  data: [situation]               Västtrafik's traffic situations on the trams in the city
 
 import { SL_DEVIATIONS, slDepartures, SMHI_WARNINGS, SR_NEWS, WEATHER } from '../src/game/feeds';
 import { parseHeadlines } from '../src/game/news';
 import { forCounty } from '../src/game/warnings';
 import { LINES } from '../src/landing/lines';
+import type { Vasttrafik } from './vasttrafik';
 
 const TIMEOUT_MS = 8000;
 /** After a failed fetch, wait this long before asking the source again, or longer when it says so with Retry-After. */
@@ -90,13 +94,15 @@ const SL_KEEP = 5 * 60;
 export interface FeedOptions {
   /** Every metro station's departures from GTFS Regional, or null while there is none (the Bun relay, with keys). */
   gtfs?: () => Promise<Record<number, unknown> | null>;
+  /** Västtrafik's API, with the relay's key: without one the trams keep to the timetable. */
+  vasttrafik?: Vasttrafik;
   log?: (message: string) => void;
   /** Keeps a refresh alive after the response, where the host needs it (the Durable Object). */
   waitUntil?: (task: Promise<unknown>) => void;
 }
 
 /** The feeds there are: anything else under /feeds/ is not asked of anyone (worker/index.ts answers it at once). */
-export const FEED_NAMES = ['sl', 'deviations', 'weather', 'warnings', 'news'] as const;
+export const FEED_NAMES = ['sl', 'deviations', 'weather', 'warnings', 'news', 'vt', 'situations'] as const;
 export type FeedName = (typeof FEED_NAMES)[number];
 export const isFeed = (name: string): name is FeedName => (FEED_NAMES as readonly string[]).includes(name);
 
@@ -165,7 +171,17 @@ export function createFeeds(options: FeedOptions = {}): Feeds {
     warnings: { ttl: 5 * 60, keep: 60 * 60, load: async () => forCounty(await json(SMHI_WARNINGS)) },
     // The papers print yesterday's news, so a copy may be old; SR is asked twice an hour at most.
     news: { ttl: 30 * 60, keep: 24 * 60 * 60, load: async () => parseHeadlines(await (await source(SR_NEWS)).text()) },
+    // The game asks every half minute while it plays; each load spends what Västtrafik's budget (server/vasttrafik.ts)
+    // allows on the stop areas asked about longest ago, so each is a minute old at most.
+    vt: { ttl: 20, keep: 3 * 60, load: async () => vasttrafik().departures() },
+    situations: { ttl: 5 * 60, keep: 60 * 60, load: async () => vasttrafik().situations() },
   };
+
+  /** Västtrafik, or a refusal that pauses the feed for a long while: without the key there is nothing to ask. */
+  function vasttrafik(): Vasttrafik {
+    if (!options.vasttrafik) throw new SourceError('no VASTTRAFIK_KEY', 503, MAX_RETRY_MS);
+    return options.vasttrafik;
+  }
 
   interface Copy { data: unknown; at: number }
   const copies = new Map<string, Copy>();

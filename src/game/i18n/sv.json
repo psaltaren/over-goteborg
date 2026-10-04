@@ -338,6 +338,14 @@
     "moved": "Tågtrafiken byter. Du står på perrongen.",
     "noTrains": "Inga tåg just nu"
   },
+  "tramReal": {
+    "toggle": "Riktiga spårvagnar (Västtrafik)",
+    "hint": "Spårvagnarna följer Västtrafiks förseningar och inställda turer i realtid. Utan kontakt går de efter tidtabellen.",
+    "loading": "Hämtar Västtrafiks spårvagnar i realtid …",
+    "on": "Spårvagnarna följer nu Västtrafik i realtid.",
+    "off": "Spårvagnarna går efter tidtabellen.",
+    "failed": "Västtrafik svarar inte just nu. Tidtabellen används så länge."
+  },
   "festive": {
     "lucia": "Ett luciatåg skrider fram längs perrongen. Ljusen fladdrar och sången ekar i berget.",
     "students": "Studenter i vita mössor hoppar och sjunger i vagnen. Någon har en ballong som fastnar i taket.",
@@ -818,7 +826,10 @@
     "last": "Spårvagnen lämnar innerstaden.",
     "display": "Nästa: {stop}",
     "alight": "Spårvagnen lämnar innerstaden. Du stiger av.",
-    "line": "Linje {line} mot {headsign}"
+    "line": "Linje {line} mot {headsign}",
+    "late": "{min} min sen",
+    "notice": "Trafikinformation: {title}",
+    "noticeHead": "Trafikinformation"
   },
   "battery": {
     "toggle": "Batteriläge",

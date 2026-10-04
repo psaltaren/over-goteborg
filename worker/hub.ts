@@ -5,7 +5,8 @@
 //   /perf        anonymous performance reports (POST) and what they sum up to (GET, a page in a browser)
 //   /errors      errors players met (POST), grouped (GET, a page in a browser)
 //   /feeds/<n>   the open data feeds, fetched from their sources only while someone asks (server/feedCore.ts), SL's
-//                from GTFS Regional when the Trafiklab keys are set as secrets (server/gtfsFeed.ts)
+//                from GTFS Regional when the Trafiklab keys are set as secrets (server/gtfsFeed.ts), the trams' from
+//                Västtrafik when VASTTRAFIK_KEY is (server/vasttrafik.ts), its token kept in storage through a restart
 // One object for the whole game keeps SL's quota and the notes in one place. Notes, reports and the GTFS timetable
 // are kept in its SQLite storage, everything else in memory: when it sleeps, nobody is playing.
 //
@@ -23,6 +24,7 @@ import { ERROR_EVERY_MS, ERROR_KEPT, errorsPage, groupErrors, readError, type Er
 import { createFeeds, type Feeds } from '../server/feedCore';
 import type { Timetable } from '../server/gtfs';
 import { gtfsDepartures, type TimetableStore } from '../server/gtfsFeed';
+import { Vasttrafik, type TokenStore } from '../server/vasttrafik';
 import { aggregate, PERF_EVERY_MS, PERF_KEPT, perfPage, readPerf, type BudgetUse, type PerfAggregate, type PerfReport } from '../server/perfCore';
 import { ADDRESS_DAY, addressKey, AGGREGATE_MS, BLOCK_DAY, blockKey, CachedBuild, Cooldown, DayCap, HOUR_MS, NOTE_EVERY_MS, NOTES_PER_HOUR, readBody, untilMidnight, utcDay } from '../server/limits';
 import { CLOSE_FLOOD, CLOSE_FULL, CLOSE_SPENT, flooding, hear, IDLE_MS, newPlayer, refill, refused, snapshots, spendMessage, TICK_MS, type Player } from '../server/pose';
@@ -44,6 +46,10 @@ export interface Env {
   /** Trafiklab's GTFS Regional keys, as secrets: without them the blue line alone follows SL's Transport API. */
   TRAFIKLAB_RT_KEY?: string;
   TRAFIKLAB_STATIC_KEY?: string;
+  /** Västtrafik's authentication key, a secret: without it the trams keep to the timetable. */
+  VASTTRAFIK_KEY?: string;
+  /** Another address for Västtrafik's API: a stand-in, in `scripts/worker-check.ts`. */
+  VASTTRAFIK_URL?: string;
 }
 
 const MAX_NOTES = 200;
@@ -148,7 +154,13 @@ export class Hub extends DurableObject<Env> {
       },
     };
     const keys = env.TRAFIKLAB_RT_KEY && env.TRAFIKLAB_STATIC_KEY ? { realtime: env.TRAFIKLAB_RT_KEY, static: env.TRAFIKLAB_STATIC_KEY } : null;
-    this.feeds = createFeeds({ log, gtfs: keys ? gtfsDepartures(keys, store, log) : undefined, waitUntil: (task) => ctx.waitUntil(task) });
+    // Västtrafik's token lasts a day and should not be fetched again before it runs out: kept with the rest.
+    const tokens: TokenStore = {
+      read: async () => (await ctx.storage.get<{ value: string; until: number }>('vt-token')) ?? null,
+      write: (token) => ctx.storage.put('vt-token', token),
+    };
+    const vasttrafik = env.VASTTRAFIK_KEY ? new Vasttrafik({ key: env.VASTTRAFIK_KEY, device: 'hub', base: env.VASTTRAFIK_URL, store: tokens }) : undefined;
+    this.feeds = createFeeds({ log, gtfs: keys ? gtfsDepartures(keys, store, log) : undefined, vasttrafik, waitUntil: (task) => ctx.waitUntil(task) });
     void ctx.blockConcurrencyWhile(async () => {
       sql.exec('CREATE TABLE IF NOT EXISTS notes (id INTEGER PRIMARY KEY AUTOINCREMENT, text TEXT NOT NULL, at INTEGER NOT NULL)');
       sql.exec('CREATE TABLE IF NOT EXISTS perf (at INTEGER NOT NULL, report TEXT NOT NULL)');

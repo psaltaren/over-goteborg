@@ -172,7 +172,14 @@ describe('the live plan', () => {
     const later = new LiveMatcher(trams).match([[stop, before[0].line, planned, planned + 240, 0]], at);
     new LivePlanner(trams, blocks()).plan(at + 1, later);
     const left = trams.departures(stop, at + 20 * 60, 4).map((d) => d.at);
-    expect(left.some((t) => t >= planned + 240 && t <= planned + 300)).toBe(true);
+    const leaves = sd.start + trams.planOf(tripId(sd.start, first))![2 * k + 1];
+    expect(leaves).toBeGreaterThanOrEqual(planned + 240);
+    expect(left).toContain(leaves);
+    // And a rider on it is told how late it is, against Västtrafik's own time: four minutes, and as long again as the
+    // block pass holds it behind the trams it now meets.
+    const late = trams.lateAt(tripId(sd.start, first), k)!;
+    expect(late).toBeGreaterThanOrEqual(240);
+    expect(late).toBeLessThan(420);
   });
 
   test('starts afresh when the clock jumps', () => {

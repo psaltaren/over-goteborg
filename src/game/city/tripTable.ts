@@ -133,6 +133,17 @@ export class TripTable {
     return this.plans.get(id)?.times;
   }
 
+  /** How late the live plan has a trip leave its stop `k`, against Västtrafik's own time (seconds), or null without a plan. */
+  lateAt(id: number, k: number): number | null {
+    const p = this.plans.get(id);
+    const data = p && this.days.get(p.day);
+    if (!p?.times || !data) return null;
+    let planned = data.trips[p.index].times[2 * k + 1];
+    // A hold at a stop moved that stop's departure and every one after (`unheld`).
+    for (const [stop, shift] of data.holds.get(p.index) ?? []) if (stop <= k) planned -= shift;
+    return p.times[2 * k + 1] - planned;
+  }
+
   /** The plans of trips that ended before `epoch` let go of. */
   dropPlansBefore(epoch: number): void {
     for (const [id, p] of this.plans) {

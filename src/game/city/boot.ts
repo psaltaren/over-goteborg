@@ -35,6 +35,8 @@ import { TRAM_FLOOR, TRAM_PLATFORM, TRAM_WIDTH } from '../layout';
 import { stepAside } from './aside';
 import { grow, PLACES, placeNear, PLAY, STREET_Y, yawToward, type Pt } from './geo';
 import { loadTramData } from './tramData';
+import { areaOf } from './liveMatch';
+import { LiveTrams, situationsFor, type LiveStatus } from './liveTrams';
 import { CitySounds } from './citySounds';
 import { Landmarks } from './landmarks';
 import { Stops } from './stops';
@@ -194,7 +196,11 @@ export async function startGame(root: HTMLElement, options: GameOptions = {}): P
   const hud = new Hud(root, null, touchMode);
   // What the pause menu and the HUD have for the metro has no use in the city yet: its modes (driving, the tour, a
   // life, the network, the screensaver), its discovery book, other players and people's voices.
-  for (const b of [hud.realButton, hud.bookButton, hud.ghostButton, hud.voiceButton, ...hud.crowdButtons]) b.hidden = true;
+  for (const b of [hud.bookButton, hud.ghostButton, hud.voiceButton, ...hud.crowdButtons]) b.hidden = true;
+  // The metro's real trains are Västtrafik's real trams here.
+  hud.realButton.hidden = true;
+  hud.realButton.setAttribute('data-t-title', 'tramReal.hint');
+  hud.realButton.querySelector('[data-t]')?.setAttribute('data-t', 'tramReal.toggle');
   for (const el of root.querySelectorAll<HTMLElement>('.hud-map, .pause-modes')) el.hidden = true;
   hud.setLine('Göteborg');
   root.querySelector('.hud')?.classList.add('is-city');
@@ -223,6 +229,29 @@ export async function startGame(root: HTMLElement, options: GameOptions = {}): P
   // The stops: platforms, shelters, names, and the next trams on their displays.
   const stops = tramData ? new Stops(physics, tramData.table, tramData.runs, tramData.links) : null;
   if (stops) scene.add(stops.group);
+  // Västtrafik's delays, cancellations and traffic notices, wherever there is a relay, unless the player chose the
+  // timetable. Debug keeps to the timetable unless asked (`live`, or chosen in the menu), so scripted scenes repeat.
+  let liveChosen: string | null = null;
+  try { liveChosen = localStorage.getItem('under-stockholm:live-trams'); } catch { /* No choice saved. */ }
+  const liveWanted = debug ? params.has('live') || liveChosen === 'on' : liveChosen !== 'off';
+  const live = tramData && relayUrl() ? new LiveTrams(tramData, liveWanted) : null;
+  let liveWas: LiveStatus = live?.status ?? 'off';
+  let liveFailTold = false;
+  if (live) {
+    hud.realButton.hidden = false;
+    hud.setOption(hud.realButton, live.enabled);
+    hud.realButton.addEventListener('click', (event) => {
+      event.stopPropagation();
+      live.setEnabled(!live.enabled);
+      liveFailTold = false;
+      hud.setOption(hud.realButton, live.enabled);
+      hud.say(live.enabled ? text.tramReal.loading : text.tramReal.off, 3);
+      try { localStorage.setItem('under-stockholm:live-trams', live.enabled ? 'on' : 'off'); } catch { /* Session only. */ }
+    });
+  }
+  hud.relabel();
+  /** The traffic notice for a platform (its stop point and lines), in force now, if Västtrafik has one. */
+  const noticeFor = (stop: string, lines: string[]) => (live?.enabled ? situationsFor(live.situations, time, { stop, area: areaOf(stop), lines })[0]?.title ?? null : null);
   // Kopparmärra, and the city's sounds: rain, gulls, Domkyrkan's bell.
   scene.add(new Landmarks(physics).group);
   const sounds = new CitySounds();
@@ -452,6 +481,8 @@ export async function startGame(root: HTMLElement, options: GameOptions = {}): P
   let aboard: Aboard | null = null;
   /** The tram ridden and the stop last announced on it, so each is called once. */
   let called = { id: -1, next: -2 };
+  /** The traffic notices already called on the tram ridden. */
+  let noticed = { id: -1, ids: new Set<string>() };
   let lastSpeed = 0;
   const carried = new Vector3();
 
@@ -476,8 +507,19 @@ export async function startGame(root: HTMLElement, options: GameOptions = {}): P
     // On the way from a stop: the next one called, with the chime, in the browser's Swedish voice.
     if (st.line && st.speed > 0.5 && (called.id !== st.id || called.next !== st.next)) {
       called = { id: st.id, next: st.next };
-      const message = nextName ? sv.tram.next.replace('{stop}', nextName) : sv.tram.last;
-      audio.announce(message, () => hud.say(message, 6), () => {}, true);
+      let message = nextName ? sv.tram.next.replace('{stop}', () => nextName) : sv.tram.last;
+      // Västtrafik's notice on the line or the next stop, after it, once a ride (not the slight ones).
+      if (called.id !== noticed.id) noticed = { id: st.id, ids: new Set() };
+      const nextStop = st.next >= 0 ? run.stops[st.next].stop : '';
+      const notice = live?.enabled ? situationsFor(live.situations, time, { lines: [st.line], area: nextStop ? areaOf(nextStop) : undefined })
+        .find((n) => n.severity !== 'slight' && !noticed.ids.has(n.id)) : undefined;
+      if (notice) {
+        noticed.ids.add(notice.id);
+        // Västtrafik's words as they are, never read as a replacement pattern.
+        const title = notice.title.replace(/\.?$/, '.');
+        message = `${message} ${sv.tram.notice.replace('{title}', () => title)}`;
+      }
+      audio.announce(message, () => hud.say(message, notice ? 10 : 6), () => {}, true);
     }
     trams.showDisplay(st.id, st.line, st.headsign, nextName ? sv.tram.display.replace('{stop}', nextName) : sv.tram.last);
   }
@@ -585,6 +627,19 @@ export async function startGame(root: HTMLElement, options: GameOptions = {}): P
       else time += Math.max(-0.05 * dt, Math.min(0.05 * dt, error));
     }
 
+    if (live) {
+      live.update(time);
+      // Said once as the trams take up Västtrafik's word or lose it.
+      const status = live.status;
+      if (status !== liveWas) {
+        // A relay without Västtrafik's key: nothing to turn on, so no switch for it.
+        hud.realButton.hidden = status === 'unavailable';
+        if (status === 'live') hud.say(text.tramReal.on, 4);
+        else if (status === 'failed' && !liveFailTold) { liveFailTold = true; hud.say(text.tramReal.failed, 5); }
+        liveWas = status;
+      }
+      lap('live');
+    }
     if (trams) {
       // Who stands in which tram is judged before they move; then they move, and the rider with them.
       aboard = respawning ? null : trams.aboard(player.feet, aboard);
@@ -612,7 +667,11 @@ export async function startGame(root: HTMLElement, options: GameOptions = {}): P
     const near = placeNear(player.feet.x, player.feet.z);
     // In-world, the line ridden in Swedish whatever the menus' language.
     const riding = aboard && trams?.tram(aboard.id)?.state;
-    hud.setStatus(near.name, riding && riding.line ? sv.tram.line.replace('{line}', riding.line).replace('{headsign}', riding.headsign) : '');
+    let ridingLine = riding && riding.line ? sv.tram.line.replace('{line}', riding.line).replace('{headsign}', riding.headsign) : '';
+    // How late Västtrafik's word has it, from a minute late.
+    const late = riding && riding.next >= 0 ? tramData!.table.lateAt(riding.id, riding.next) : null;
+    if (ridingLine && late !== null && late >= 60) ridingLine += `, ${sv.tram.late.replace('{min}', String(Math.floor(late / 60)))}`;
+    hud.setStatus(near.name, ridingLine);
     const out = listening ? audio.output : null;
     if (out) placeListener(out, player.camera.position, player.yaw);
     weather.update(dt, time, null, out);
@@ -639,7 +698,7 @@ export async function startGame(root: HTMLElement, options: GameOptions = {}): P
       secondTimer = 1;
       hud.setClock(formatClock(time));
       if (++placeTimer % 5 === 0) rememberPlace();
-      stops?.update(time, player.feet.x, player.feet.z);
+      stops?.update(time, player.feet.x, player.feet.z, noticeFor);
       // The next service day's timetable, fetched a couple of minutes before it starts.
       if (placeTimer % 60 === 0) void tramData?.ensure(time + 120);
     }
@@ -678,6 +737,8 @@ export async function startGame(root: HTMLElement, options: GameOptions = {}): P
       runs: tramData?.runs ?? [],
       /** The stops' platforms, shelters and displays. */
       stops,
+      /** Västtrafik's word and the live plan (`live.stats`, `live.live`, `live.situations`), null without a relay. */
+      live,
       /** The sound, and the city's own (rain, gulls, the bell). */
       audio,
       sounds,
@@ -836,7 +897,7 @@ export async function startGame(root: HTMLElement, options: GameOptions = {}): P
   });
   crashFacts(() => ({ where: placeNear(player.feet.x, player.feet.z).name, gpu: gpuName(renderer.getContext()) }));
   // Not in debug: the measuring scripts drive the game there, and their frames are not a player's.
-  telemetry = new Telemetry(debug ? null : relayUrl(), () => ({ touch: touchMode, scale: resolution.level, pixelRatio: renderer.getPixelRatio(), loadS, real: false, passengers: false, gpu: gpuName(renderer.getContext()) }));
+  telemetry = new Telemetry(debug ? null : relayUrl(), () => ({ touch: touchMode, scale: resolution.level, pixelRatio: renderer.getPixelRatio(), loadS, real: live?.status === 'live', passengers: false, gpu: gpuName(renderer.getContext()) }));
   window.addEventListener('pagehide', () => telemetry?.leave());
   window.addEventListener('pagehide', () => rememberPlace());
   document.addEventListener('visibilitychange', () => { if (document.hidden) rememberPlace(); });

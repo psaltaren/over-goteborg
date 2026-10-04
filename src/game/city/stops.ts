@@ -1,19 +1,21 @@
 // The tram stops: a platform for each of Västtrafik's stop points in the area (a platform, `RunStop.stop`), raised as
 // Gothenburg's kerbs are beside its track, as long as a tram from where the tram stops back; a shelter on it, a post
 // with the stop's name, and on the post a display of the next trams to leave, from the timetable (`TripTable.
-// departures`). The platforms, shelters and posts are one baked section, built once when the timetable is here; the
-// displays are a few canvases, given to the platforms nearest the player and drawn once a second.
+// departures`, live when Västtrafik's word is in). The platforms, shelters and posts are one baked section, built once
+// when the timetable is here; the displays are a few canvases, given to the platforms nearest the player and drawn once
+// a second, a traffic notice taking a display's turn now and then where Västtrafik has one for the stop or its lines.
 
 import { CanvasTexture, Group, Matrix4, Mesh, MeshBasicMaterial, PlaneGeometry, SRGBColorSpace, Vector3 } from 'three';
 import type { Paint } from '../gfx/builder';
 import { rgb } from '../gfx/color';
 import { FONT, fitText, MONO } from '../gfx/signs';
+import sv from '../i18n/sv.json';
 import { TRAM_PLATFORM, TRAM_SECTION_ENDS, TRAM_WIDTH } from '../layout';
 import type { Physics, StaticCollider } from '../physics';
 import { Section } from '../world/section';
 import { STREET_Y, type Pt } from './geo';
 import { TramPath } from './path';
-import type { Run } from './schedule';
+import { signAt, type Run } from './schedule';
 import type { Link } from './trackData';
 import { TrackIndex } from './trackIndex';
 import type { TripTable } from './tripTable';
@@ -33,6 +35,10 @@ const DISPLAYS = 4;
 const DISPLAY_REACH = 70;
 /** The name signs' atlas: a row each. */
 const NAME_W = 256, NAME_H = 48;
+/** A display with a traffic notice shows it this many seconds of each turn of so many. */
+const NOTICE_SHOWN = 4, NOTICE_TURN = 12;
+/** The heading of a notice on a display (in-world, so Swedish). */
+const NOTICE_HEAD = sv.tram.noticeHead;
 
 /** A stop's platform: its stop point, its name and letter, along which run's track, and how it lies. */
 interface Platform {
@@ -42,7 +48,12 @@ interface Platform {
   /** The post's foot, and the way its signs face (along the platform, toward its far end). */
   post: Pt;
   facing: Pt;
+  /** The lines that leave from it. */
+  lines: string[];
 }
+
+/** A traffic notice for a platform (its stop point and the lines that leave from it), or null when there is none. */
+export type NoticeFor = (stop: string, lines: string[]) => string | null;
 
 export class Stops {
   readonly group = new Group();
@@ -55,10 +66,14 @@ export class Stops {
     const s = new Section('stops', AMBIENT, false, true);
     const seen = new Set<string>();
     const lay: Array<{ run: Run; k: number; path: TramPath }> = [];
+    const linesAt = new Map<string, Set<string>>();
     for (const run of runs) {
       let path: TramPath | null = null;
       run.stops.forEach((st, k) => {
-        if (!st.stop || st.s < 0 || st.s > run.length || seen.has(st.stop)) return;
+        if (!st.stop || st.s < 0 || st.s > run.length) return;
+        const line = signAt(run, st.s).line;
+        if (line) linesAt.set(st.stop, (linesAt.get(st.stop) ?? new Set()).add(line));
+        if (seen.has(st.stop)) return;
         seen.add(st.stop);
         path ??= new TramPath(run, links);
         lay.push({ run, k, path });
@@ -77,7 +92,7 @@ export class Stops {
       const built = this.platform(s, physics, index, path, st.s, st.side);
       if (!built) continue;
       const row = this.platforms.length;
-      this.platforms.push({ stop: st.stop, name: st.name, letter: st.platform, post: built.post, facing: built.facing });
+      this.platforms.push({ stop: st.stop, name: st.name, letter: st.platform, post: built.post, facing: built.facing, lines: [...(linesAt.get(st.stop) ?? [])] });
       drawName(names, row, st.name, st.platform);
       // The name sign on its post, both ways round.
       const [px, pz] = built.post, [fx, fz] = built.facing;
@@ -178,8 +193,11 @@ export class Stops {
     return { post, facing: [-front.d[0], -front.d[1]] };
   }
 
-  /** Once a second: the displays given to the platforms nearest (`x`, `z`), each showing its next trams at `epoch`. */
-  update(epoch: number, x: number, z: number): void {
+  /**
+   * Once a second: the displays given to the platforms nearest (`x`, `z`), each showing its next trams at `epoch`, and
+   * for a few seconds now and then the platform's traffic notice, if `notice` has one.
+   */
+  update(epoch: number, x: number, z: number, notice: NoticeFor = () => null): void {
     const near = this.platforms
       .map((p) => ({ p, d: Math.hypot(p.post[0] - x, p.post[1] - z) }))
       .filter(({ d }) => d < DISPLAY_REACH)
@@ -197,6 +215,15 @@ export class Stops {
       const [px, pz] = p.post, [fx, fz] = p.facing;
       d.mesh.matrix.copy(new Matrix4().makeRotationY(Math.atan2(fx, fz)).setPosition(px + fx * 0.07, STREET_Y + TRAM_PLATFORM.height + 2.3, pz + fz * 0.07));
       d.mesh.matrixWorldNeedsUpdate = true;
+      const message = Math.floor(epoch) % NOTICE_TURN >= NOTICE_TURN - NOTICE_SHOWN ? notice(p.stop, p.lines) : null;
+      if (message) {
+        const text = JSON.stringify([p.stop, message]);
+        if (text === d.text) continue;
+        d.text = text;
+        drawNotice(d.ctx, message);
+        d.texture.needsUpdate = true;
+        continue;
+      }
       const departures = this.table.departures(p.stop, epoch, 3);
       const rows = departures.map((dep) => {
         const minutes = Math.floor((dep.at - epoch) / 60);
@@ -254,4 +281,27 @@ function drawDepartures(ctx: CanvasRenderingContext2D, rows: Array<{ line: strin
     fitText(ctx, r.when, 64, 700, 24, MONO);
     ctx.fillText(r.when, 250, y);
   });
+}
+
+/** A traffic notice, amber on black: its heading, and the notice in up to two lines. */
+function drawNotice(ctx: CanvasRenderingContext2D, message: string): void {
+  ctx.fillStyle = '#060708';
+  ctx.fillRect(0, 0, 256, 128);
+  ctx.fillStyle = '#ffb02e';
+  ctx.textBaseline = 'middle';
+  ctx.textAlign = 'left';
+  fitText(ctx, NOTICE_HEAD, 240, 700, 24, MONO);
+  ctx.fillText(NOTICE_HEAD, 8, 22);
+  // The words in two lines of about half each, the second cut short if it must be.
+  const words = message.split(/\s+/);
+  let first = '';
+  while (words.length && (first + ' ' + words[0]).trim().length <= Math.max(18, message.length / 2)) first = `${first} ${words.shift()}`.trim();
+  let second = words.join(' ');
+  if (second.length > 40) second = `${second.slice(0, 39).trimEnd()}…`;
+  ctx.fillStyle = '#ffd27a';
+  for (const [line, y] of [[first, 62], [second, 100]] as Array<[string, number]>) {
+    if (!line) continue;
+    fitText(ctx, line, 240, 600, 22, MONO);
+    ctx.fillText(line, 8, y);
+  }
 }

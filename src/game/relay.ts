@@ -30,6 +30,11 @@ export function relayUrl(): string | null {
 }
 
 let relayDownUntil = 0;
+/** The feeds the relay has said are off (it has no key for their source). */
+const offFeeds = new Set<string>();
+
+/** Whether the relay said a feed is off: there is nothing to have from it, so no need to ask often. */
+export const feedOff = (name: string): boolean => offFeeds.has(name);
 
 /** Fetches `url`, giving up after a few seconds or when `signal` aborts. */
 export async function fetchWithTimeout(url: string, signal?: AbortSignal, ms = TIMEOUT): Promise<Response> {
@@ -58,9 +63,17 @@ export async function relayFeed<T>(name: string, signal?: AbortSignal): Promise<
   try {
     const response = await fetchWithTimeout(`${base}/feeds/${name}`, signal);
     const body = (await response.json()) as { data: T; at: number } | { error?: string };
-    if (response.ok && 'data' in body) return { data: body.data, at: body.at / 1000 };
-    // The relay answered but the source is down or limiting it: the relay retries on its own.
+    if (response.ok && 'data' in body) {
+      offFeeds.delete(name);
+      return { data: body.data, at: body.at / 1000 };
+    }
+    // The relay answered but the source is down or limiting it: the relay retries on its own. Or it has no key for the
+    // source at all: the feed is off, and the relay is fine.
     if ('error' in body && body.error === 'unavailable') return null;
+    if ('error' in body && body.error === 'off') {
+      offFeeds.add(name);
+      return null;
+    }
   } catch {
     if (signal?.aborted) return null;
   }

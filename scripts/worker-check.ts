@@ -2,11 +2,13 @@
 // quick gates (after the build, which the Worker's static assets need). It starts `wrangler dev` with each address's
 // share of the day and both budgets set small, and walks what docs/DRIFT.md section 3 promises: an address past its share
 // is refused by the hub, which says so, and then by the Worker alone; sockets and their messages count; an IPv6 /48
-// is one block; and the players' budget and the feeds', notes' and reports' cannot spend each other.
+// is one block; the players' budget and the feeds', notes' and reports' cannot spend each other; and Västtrafik (a
+// stand-in, scripts/vt-standin.ts) hears from the hub once per its own budget, however many ask.
 // Every scenario uses addresses of its own, as the counts are kept per address for the whole run.
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { VT_PER_MINUTE } from '../server/vasttrafik';
 
 const root = join(import.meta.dir, '..');
 const probe = Bun.serve({ port: 0, fetch: () => new Response() });
@@ -14,7 +16,12 @@ const port = probe.port!;
 probe.stop(true);
 const base = `http://localhost:${port}`;
 const state = mkdtempSync(join(tmpdir(), 'worker-check-'));
-const vars = { ADDRESS_DAY: 3, BLOCK_DAY: 4, GHOST_BUDGET: 40, DATA_BUDGET: 60 };
+// Västtrafik's stand-in, on a port of its own, which counts what it is asked.
+const probeVt = Bun.serve({ port: 0, fetch: () => new Response() });
+const vtPort = probeVt.port!;
+probeVt.stop(true);
+const standin = Bun.spawn(['bun', 'scripts/vt-standin.ts'], { cwd: root, env: { ...process.env, PORT: String(vtPort) }, stdout: 'ignore', stderr: 'ignore' });
+const vars = { ADDRESS_DAY: 3, BLOCK_DAY: 4, GHOST_BUDGET: 40, DATA_BUDGET: 60, VASTTRAFIK_KEY: btoa('stand-in:no secret'), VASTTRAFIK_URL: `http://127.0.0.1:${vtPort}` };
 const wrangler = Bun.spawn(
   ['bunx', 'wrangler', 'dev', '--port', String(port), '--ip', '127.0.0.1', '--persist-to', state, '--show-interactive-dev-session=false', '--log-level', 'warn',
     ...Object.entries(vars).flatMap(([k, v]) => ['--var', `${k}:${v}`])],
@@ -94,6 +101,19 @@ try {
   expect('and another /64 of it by the Worker', again.status === 429 && again.scope === null, true);
   expect('another block is let through', (await get('/notes', '2001:db8:a:1::1')).status, 200);
 
+  console.log('Västtrafik');
+  // A crowd asking at once, each address once (the share of the day is three): one token, and no more of the stand-in
+  // than the hub's own budget allows in a minute (server/vasttrafik.ts).
+  const crowd = await Promise.all(Array.from({ length: 12 }, (_, i) => fetch(`${base}/feeds/vt`, { headers: { 'cf-connecting-ip': `192.0.2.${100 + i}` } })));
+  expect('the trams\' departures are passed on', crowd.every((r) => r.status === 200), true);
+  const body = (await crowd[0].json().catch(() => null)) as { data?: { departures?: unknown[] } } | null;
+  for (const r of crowd.slice(1)) await r.arrayBuffer();
+  expect('...with departures in them', (body?.data?.departures?.length ?? 0) > 0, true);
+  expect('and the situations', (await get('/feeds/situations', '192.0.2.120')).status, 200);
+  const calls = (await (await fetch(`http://127.0.0.1:${vtPort}/calls`)).json()) as Array<{ path: string }>;
+  expect('Västtrafik is asked for one token', calls.filter((c) => c.path === '/token').length, 1);
+  expect(`...and at most ${VT_PER_MINUTE} times in all`, calls.length <= VT_PER_MINUTE, true);
+
   console.log('the two budgets');
   let spent = '';
   for (let i = 0; i < 60 && spent !== '4000'; i++) spent = await socket(`198.51.100.${i + 1}`);
@@ -110,6 +130,7 @@ try {
   console.log(`  FAIL ${String(error)}`);
 } finally {
   wrangler.kill();
+  standin.kill();
   await wrangler.exited;
   rmSync(state, { recursive: true, force: true });
 }

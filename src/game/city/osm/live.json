@@ -1,0 +1,47 @@
+{
+  "license": "Timetable from Västtrafik through Trafiklab (GTFS Regional), CC0 1.0: https://www.trafiklab.se/api/gtfs-datasets/gtfs-regional/",
+  "format": "bun scripts/gbg-gtfs.ts. areas: the stop areas with stops in the area; queries: the calls the relay makes for their departures (an area, or the busiest split by platforms, so a call's list holds the span asked for); lines: the tram lines through it, each with its route ids (Västtrafik's line gids).",
+  "span": 40,
+  "areas": [
+    {"gid":"9021014001760000","name":"Brunnsparken"},
+    {"gid":"9021014002130000","name":"Domkyrkan"},
+    {"gid":"9021014002135000","name":"Drottningtorget"},
+    {"gid":"9021014002850000","name":"Grönsakstorget"},
+    {"gid":"9021014003040000","name":"Hagakyrkan"},
+    {"gid":"9021014003640000","name":"Järntorget"},
+    {"gid":"9021014004090000","name":"Kungsportsplatsen"},
+    {"gid":"9021014004380000","name":"Lilla Bommen"},
+    {"gid":"9021014004942000","name":"Nils Ericsonsplatsen"},
+    {"gid":"9021014005337000","name":"Prinsgatan"},
+    {"gid":"9021014006242000","name":"Stenpiren"}
+  ],
+  "queries": [
+    {"gid":"9021014001760000","platforms":["A1","A2","B1","B2"]},
+    {"gid":"9021014001760000","platforms":["C1","C2"]},
+    {"gid":"9021014002130000","platforms":["A","B"]},
+    {"gid":"9021014002135000","platforms":["A1","A2","A3","A4","A5","A6"]},
+    {"gid":"9021014002850000","platforms":["A","B","C","D"]},
+    {"gid":"9021014003040000","platforms":["A","B"]},
+    {"gid":"9021014003640000","platforms":["A","B","C","D"]},
+    {"gid":"9021014004090000","platforms":["A","B"]},
+    {"gid":"9021014004380000","platforms":["A","B"]},
+    {"gid":"9021014004942000","platforms":["B","C"]},
+    {"gid":"9021014005337000","platforms":["A"]},
+    {"gid":"9021014006242000","platforms":["A","B"]}
+  ],
+  "lines": [
+    {"line":"1","gids":["9011014500100000"]},
+    {"line":"2","gids":["9011014500200000"]},
+    {"line":"3","gids":["9011014500300000"]},
+    {"line":"4","gids":["9011014500400000"]},
+    {"line":"5","gids":["9011014500500000"]},
+    {"line":"6","gids":["9011014500600000"]},
+    {"line":"7","gids":["9011014500700000"]},
+    {"line":"9","gids":["9011014500900000"]},
+    {"line":"10","gids":["9011014501000000"]},
+    {"line":"11","gids":["9011014501100000"]},
+    {"line":"12","gids":["9011014501200000"]},
+    {"line":"13","gids":["9011014501300000"]},
+    {"line":"X","gids":["9011014510100000","9011014510200000"]}
+  ]
+}

@@ -27,7 +27,9 @@
  */
 import { existsSync, mkdirSync, rmSync, statSync } from 'node:fs';
 import { grow, PLAY, toGame, TRACK_REACH, type Pt } from '../src/game/city/geo';
-import { blocksIn, covered, DAYS, NIGHT_BEFORE, OUT_OF_SERVICE, packTrips, runBlocks, runPieces, runPosition, type Day, type Run, type RunStop, type ScheduleFile, type Sign, type Trip } from '../src/game/city/schedule';
+import { Blocks, firstIn, type Held } from '../src/game/city/blocks';
+import { areaOf } from '../src/game/city/liveMatch';
+import { DAYS, NIGHT_BEFORE, OUT_OF_SERVICE, packTrips, runPieces, type Day, type Hold, type Run, type RunStop, type ScheduleFile, type Sign, type Trip } from '../src/game/city/schedule';
 import { endDir, pointAt, polylineLength, prevsOf, readLinks, startDir, turn, type TrackFile } from '../src/game/city/trackData';
 import { TRAM_ACCEL, TRAM_LENGTH } from '../src/game/layout';
 import { splitCsv } from '../server/gtfs';
@@ -42,6 +44,10 @@ const URL_BASE = 'https://opendata.samtrafiken.se/gtfs/vt/vt.zip';
 const OUT = 'src/game/city/osm/schedule.json';
 /** The game's copy: the runs, and each day's trips packed (`packTrips`). */
 const GAME_DIR = 'src/game/city/osm/trams';
+/** The stop areas and lines the relay asks Västtrafik about, how far ahead, and the most departures one call lists. */
+const LIVE = 'src/game/city/osm/live.json';
+const LIST_MINUTES = 40;
+const LIST_MOST = 80;
 const LICENSE = 'Timetable from Västtrafik through Trafiklab (GTFS Regional), CC0 1.0: https://www.trafiklab.se/api/gtfs-datasets/gtfs-regional/';
 /** Västtrafik's trams in GTFS's extended route types. */
 const TRAM = '900';
@@ -50,8 +56,6 @@ const DWELL = 15;
 /** How long a tram stands at a terminus in the area before it sets off, and after it arrives. */
 const LAYOVER_BEFORE = 60;
 const LAYOVER_AFTER = 30;
-/** Seconds kept clear between one tram leaving a block and the next coming in. */
-const MARGIN = 3;
 /** A stop further than this from the track it is matched to is taken for a bad match, and its run left out. */
 const STOP_OFF = 8;
 /** How fast a tram runs out of service, to or from the edge of the area or between two of its trips (m/s). */
@@ -633,79 +637,33 @@ report.push(`ends in the area: ${ends.chained} trips joined to the one before as
 
 // ---- 5. The block pass. ----
 
-const along = runs.map((r) => runBlocks(r, links, tracks.blocks));
-const conflictsOf = new Map<number, number[]>();
-for (const [a, b] of tracks.conflicts) {
-  if (!conflictsOf.has(a)) conflictsOf.set(a, []);
-  if (!conflictsOf.has(b)) conflictsOf.set(b, []);
-  conflictsOf.get(a)!.push(b);
-  conflictsOf.get(b)!.push(a);
-}
-
-/** When a trip's tram is in each block: its first and last second there. */
-function occupancy(trip: Trip): Map<number, [number, number]> {
-  const out = new Map<number, [number, number]>();
-  const r = runs[trip.run];
-  const t0 = Math.ceil(trip.times[0]), t1 = Math.floor(trip.times[trip.times.length - 1]);
-  for (let t = t0; t <= t1; t++) {
-    const s = runPosition(r, trip.times, t);
-    if (s === null) continue;
-    const c = covered(r, s);
-    if (!c) continue;
-    for (const b of blocksIn(along[trip.run], c[0], c[1])) {
-      const cur = out.get(b);
-      out.set(b, cur ? [cur[0], t] : [t, t]);
-    }
-  }
-  return out;
-}
+const blocks = new Blocks(runs, links, tracks.blocks, tracks.conflicts);
 
 /**
  * One kind of day's block pass, with the blocks the night before holds already taken: its trips in the order they
  * reach the first block where they could meet another (first come, first served, so a tram that gets to Drottningtorget
- * first goes first, whichever came into the area first), each held at the stop before a clash for as long as it takes.
+ * first goes first, whichever came into the area first), each held at the stop before a clash for as long as it takes
+ * (`Blocks.clear`).
  */
-function blockPass(day: Day, night: Map<number, Array<[number, number]>>) {
-  const list = days[day].map((trip) => ({ trip, enter: firstContested(trip) })).filter((x) => x.enter !== null).sort((a, b) => a.enter! - b.enter!);
-  const held = new Map<number, Array<[number, number]>>([...night].map(([b, spans]) => [b, [...spans]]));
+function blockPass(day: Day, night: Held) {
+  const list = days[day].map((trip) => ({ trip, enter: blocks.firstContested(trip.run, trip.times) })).filter((x) => x.enter !== null).sort((a, b) => a.enter! - b.enter!);
+  const held: Held = new Map([...night].map(([b, spans]) => [b, [...spans]]));
   let holds = 0, stuck = 0;
   for (const { trip } of list) {
-    let tries = 0;
-    for (; tries < 60; tries++) {
-      const occ = occupancy(trip);
-      // The earliest clash: a block this tram enters while another holds it, or one that conflicts with it.
-      let clash: { at: number; until: number } | null = null;
-      for (const [b, [a, z]] of occ) {
-        for (const other of [b, ...(conflictsOf.get(b) ?? [])]) {
-          for (const [oa, oz] of held.get(other) ?? []) {
-            if (oa - MARGIN <= z && a <= oz + MARGIN && (!clash || a < clash.at)) clash = { at: a, until: oz + MARGIN + 1 };
-          }
-        }
-      }
-      if (!clash) {
-        for (const [b, span] of occ) {
-          if (!held.has(b)) held.set(b, []);
-          held.get(b)!.push(span);
-        }
-        break;
-      }
-      // Hold the tram at the last stop it leaves before the clash, by as long as the other needs; a clash while it still
-      // stands at its first stop moves the whole trip on (it comes in, or sets out, that much later).
-      const shift = Math.max(1, clash.until - clash.at);
-      let from = 0;
-      for (let i = 0; i < runs[trip.run].stops.length; i++) if (trip.times[2 * i + 1] <= clash.at) from = 2 * i + 1;
-      for (let j = from; j < trip.times.length; j++) trip.times[j] += shift;
-      trip.held = (trip.held ?? 0) + shift;
-      holds++;
+    const result = blocks.clear(trip.run, trip.times, held);
+    if (result.holds.length) {
+      trip.holds = result.holds;
+      trip.held = result.holds.reduce((sum, [, shift]) => sum + shift, 0);
+      holds += result.holds.length;
     }
-    if (tries >= 60) stuck++;
+    if (!result.cleared) stuck++;
   }
   return { holds, stuck, held };
 }
 
 /** The blocks a day's trams hold after its midnight, on the next day's clock. */
-function pastMidnight(held: Map<number, Array<[number, number]>>): Map<number, Array<[number, number]>> {
-  const out = new Map<number, Array<[number, number]>>();
+function pastMidnight(held: Held): Held {
+  const out: Held = new Map();
   for (const [b, spans] of held) {
     const late = spans.filter(([, z]) => z >= 86_400).map(([a, z]) => [a - 86_400, z - 86_400] as [number, number]);
     if (late.length) out.set(b, late);
@@ -717,13 +675,14 @@ function pastMidnight(held: Map<number, Array<[number, number]>>): Map<number, A
 // any other: a holiday). The nights run late in the evening, which the morning's holds do not reach, so they come out of
 // the second round the same.
 const original = Object.fromEntries(DAYS.map((d) => [d, days[d].map((t) => [...t.times])])) as Record<Day, number[][]>;
-const firstRound = Object.fromEntries(DAYS.map((d) => [d, blockPass(d, new Map()).held])) as Record<Day, Map<number, Array<[number, number]>>>;
+const firstRound = Object.fromEntries(DAYS.map((d) => [d, blockPass(d, new Map()).held])) as Record<Day, Held>;
 for (const day of DAYS) {
   days[day].forEach((t, i) => {
     t.times = [...original[day][i]];
     delete t.held;
+    delete t.holds;
   });
-  const night = new Map<number, Array<[number, number]>>();
+  const night: Held = new Map();
   for (const before of NIGHT_BEFORE[day]) for (const [b, spans] of pastMidnight(firstRound[before])) night.set(b, [...(night.get(b) ?? []), ...spans]);
   const { holds, stuck } = blockPass(day, night);
   const all = days[day].map((t) => t.held ?? 0).sort((a, b) => a - b);
@@ -731,26 +690,10 @@ for (const day of DAYS) {
   report.push(`${day} (${dates[day]}): ${days[day].length} trips through the area, ${days[day].filter((t) => t.held).length} held (${holds} holds), held a median ${median} s, 90% under ${p90} s, at most ${all[all.length - 1]} s${stuck ? `; WARN ${stuck} could not be cleared` : ''}`);
 }
 
-function firstContested(trip: Trip): number | null {
-  const occ = occupancy(trip);
-  let first: number | null = null;
-  for (const [b, [a]] of occ) if (conflictsOf.has(b) && (first === null || a < first)) first = a;
-  return first ?? firstIn(trip);
-}
-
-function firstIn(trip: Trip): number | null {
-  const r = runs[trip.run];
-  for (let t = Math.ceil(trip.times[0]); t <= trip.times[trip.times.length - 1]; t++) {
-    const s = runPosition(r, trip.times, t);
-    if (s !== null && covered(r, s)) return t;
-  }
-  return null;
-}
-
 // ---- 6. Written. ----
 
 for (const day of DAYS) {
-  days[day] = days[day].filter((t) => firstIn(t) !== null).map((t) => ({ run: t.run, times: t.times.map((v) => Math.round(v)), ...(t.held ? { held: Math.round(t.held) } : {}) }));
+  days[day] = days[day].filter((t) => firstIn(runs[t.run], t.times) !== null).map((t) => ({ run: t.run, times: t.times.map((v) => Math.round(v)), ...(t.held ? { held: Math.round(t.held), holds: t.holds!.map(([k, shift]) => [k, Math.round(shift)] as Hold) } : {}) }));
   days[day].sort((a, b) => a.times[0] - b.times[0]);
 }
 // Only the runs some trip takes (a trip joined to the next leaves its own run unused), numbered again in order.
@@ -774,7 +717,66 @@ writeJson(OUT, file, { runs, weekday: days.weekday, saturday: days.saturday, sun
 rmSync(GAME_DIR, { recursive: true, force: true });
 mkdirSync(GAME_DIR, { recursive: true });
 writeJson(`${GAME_DIR}/runs.json`, { license: LICENSE, format: 'As schedule.json\'s runs (bun scripts/gbg-gtfs.ts).', feed: feed.feed_version, dates }, { runs });
-for (const day of DAYS) writeJson(`${GAME_DIR}/${day}.json`, { license: LICENSE, format: 'Each trip as [run, then its times as whole seconds, each from the one before] (packTrips in src/game/city/schedule.ts).' }, { trips: packTrips(days[day]) });
+for (const day of DAYS) {
+  writeJson(`${GAME_DIR}/${day}.json`, { license: LICENSE, format: 'Each trip as [run, then its times as whole seconds, each from the one before] (packTrips in src/game/city/schedule.ts).' }, { trips: packTrips(days[day]) });
+  // Apart, fetched only by the live trams (src/game/city/liveTrams.ts): the landing page's board has no use for them.
+  writeJson(`${GAME_DIR}/${day}.holds.json`, {
+    license: LICENSE,
+    format: 'holds: [a trip\'s place in its day\'s list, where the block pass held it as [[stop index (-1 the whole trip), seconds], ...]]: its times less these are Västtrafik\'s.',
+  }, { holds: days[day].flatMap((t, i) => (t.holds ? [[i, t.holds]] : [])) });
+}
+// What the relay asks Västtrafik about (server/vasttrafik.ts): the stop areas the trams stop at in the area, with their
+// tram platforms, and the tram lines through it, by Västtrafik's ids (GTFS Regional's are the same).
+const areas = new Map<string, { gid: string; name: string; platforms: Map<string, number[]> }>();
+for (const r of runs) {
+  for (const st of r.stops) {
+    if (!st.stop || st.s < 0 || st.s > r.length) continue;
+    const gid = areaOf(st.stop);
+    if (!areas.has(gid)) areas.set(gid, { gid, name: st.name, platforms: new Map() });
+    const platforms = areas.get(gid)!.platforms;
+    if (!platforms.has(st.platform)) platforms.set(st.platform, []);
+  }
+}
+// The weekday's departures from each platform, to split the busiest areas into calls Västtrafik's list holds: at most
+// LIST_MOST in any LIST_MINUTES (the relay asks for that span, with room for the minute before).
+for (const t of days.weekday) {
+  const r = runs[t.run];
+  r.stops.forEach((st, k) => {
+    if (!st.stop || st.s < 0 || st.s > r.length || k === r.stops.length - 1) return;
+    areas.get(areaOf(st.stop))?.platforms.get(st.platform)?.push(t.times[2 * k + 1]);
+  });
+}
+const most = (times: number[]) => {
+  const sorted = [...times].sort((a, b) => a - b);
+  let top = 0;
+  for (let i = 0, j = 0; i < sorted.length; i++) {
+    while (sorted[i] - sorted[j] > (LIST_MINUTES + 1) * 60) j++;
+    top = Math.max(top, i - j + 1);
+  }
+  return top;
+};
+const queries: Array<{ gid: string; platforms: string[] }> = [];
+for (const area of [...areas.values()].sort((a, b) => a.name.localeCompare(b.name))) {
+  let group: string[] = [];
+  for (const p of [...area.platforms.keys()].sort()) {
+    const tried = [...group, p];
+    if (group.length && most(tried.flatMap((x) => area.platforms.get(x)!)) > LIST_MOST) {
+      queries.push({ gid: area.gid, platforms: group });
+      group = [p];
+    } else group = tried;
+  }
+  if (group.length) queries.push({ gid: area.gid, platforms: group });
+}
+const inService = new Set(runs.flatMap((r) => [r.line, ...(r.signs ?? []).map((x) => x.line)]).filter(Boolean));
+writeJson(LIVE, {
+  license: LICENSE,
+  format: 'bun scripts/gbg-gtfs.ts. areas: the stop areas with stops in the area; queries: the calls the relay makes for their departures (an area, or the busiest split by platforms, so a call\'s list holds the span asked for); lines: the tram lines through it, each with its route ids (Västtrafik\'s line gids).',
+  span: LIST_MINUTES,
+}, {
+  areas: [...areas.values()].sort((a, b) => a.name.localeCompare(b.name)).map((a) => ({ gid: a.gid, name: a.name })),
+  queries,
+  lines: [...inService].sort((a, b) => a.localeCompare(b, 'sv', { numeric: true })).map((line) => ({ line, gids: [...routes].filter(([, name]) => name === line).map(([id]) => id).sort() })),
+});
 console.log(`${runs.length} runs from ${patterns.size} patterns`);
 if (matcher.gaps.length) {
   // Where a route's shape could not be followed on the tracks: track the graph lacks, or a turn it does not allow.

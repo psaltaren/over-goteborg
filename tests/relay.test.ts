@@ -1,5 +1,5 @@
 import { afterEach, expect, test } from 'bun:test';
-import { relayFeed } from '../src/game/relay';
+import { feedOff, relayFeed } from '../src/game/relay';
 import { fetchDepartures, realTrainsAvailable } from '../src/game/sl';
 
 const realFetch = globalThis.fetch;
@@ -20,6 +20,17 @@ test('a relay without a copy gives nothing, and is asked again next time', async
   expect(await relayFeed('deviations')).toBeNull();
   expect(await relayFeed('deviations')).toBeNull();
   expect(calls.length).toBe(2);
+});
+
+test('a feed the relay has no key for is off, and the relay is not taken for down', async () => {
+  process.env.VITE_GHOSTS_URL = 'ws://relay.test/ghosts';
+  const calls = stub(() => Response.json({ error: 'off' }, { status: 404 }));
+  expect(await relayFeed('vt')).toBeNull();
+  expect(feedOff('vt')).toBe(true);
+  // Another feed is still asked at once.
+  stub(() => Response.json({ at: 1_000_000, data: [] }));
+  expect(await relayFeed('situations')).not.toBeNull();
+  expect(calls.length).toBe(1);
 });
 
 test('without a relay there are no real trains and SL is never asked', async () => {

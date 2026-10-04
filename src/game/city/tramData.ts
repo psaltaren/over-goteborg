@@ -1,9 +1,11 @@
 // The trams' data as the game fetches it from its own origin when it starts, as it fetches the squares: the track graph
 // (`osm/tracks.json`), the runs (`osm/trams/runs.json`), and the timetable of each service day running (`osm/trams/
-// <day>.json`, packed), not bundled into the game's code. A new day's is fetched when the clock comes to it.
+// <day>.json`, packed), not bundled into the game's code. A new day's is fetched when the clock comes to it. Where the
+// block pass held each trip (`osm/trams/<day>.holds.json`) only the live trams need, and fetch when they start.
 
+import { Blocks } from './blocks';
 import { readLinks, type Link, type TrackFile } from './trackData';
-import { DAYS, unpackTrips, type Day, type Run } from './schedule';
+import { DAYS, unpackTrips, type Day, type Hold, type Run } from './schedule';
 import { serviceDays } from './serviceDay';
 import { TripTable } from './tripTable';
 
@@ -38,8 +40,12 @@ export interface TramData {
   links: Link[];
   runs: Run[];
   table: TripTable;
+  /** The track's blocks, for the live plan (`livePlan.ts`). */
+  blocks: Blocks;
   /** Fetches the timetables of the service days running at `epoch` that are not here yet; resolves once they are. */
   ensure(epoch: number): Promise<void>;
+  /** The same for where the block pass held their trips, which only the live trams need; resolves true once they are here. */
+  ensureHolds(epoch: number): Promise<boolean>;
 }
 
 /**
@@ -48,9 +54,10 @@ export interface TramData {
  * waiting for the timetable.
  */
 export async function loadTramData(epoch: number, onTracks?: (links: Link[] | null) => void): Promise<TramData> {
-  const tracksUp = fetchJson<TrackFile>('tracks').then(readLinks);
+  const fileUp = fetchJson<TrackFile>('tracks');
+  const tracksUp = fileUp.then(readLinks);
   tracksUp.then((links) => onTracks?.(links), () => onTracks?.(null));
-  const [links, runsFile] = await Promise.all([tracksUp, fetchJson<{ runs: Run[] }>('runs')]);
+  const [file, links, runsFile] = await Promise.all([fileUp, tracksUp, fetchJson<{ runs: Run[] }>('runs')]);
   const table = new TripTable(runsFile.runs);
   const pending = new Map<Day, Promise<void>>();
   const ensure = async (at: number) => {
@@ -66,5 +73,19 @@ export async function loadTramData(epoch: number, onTracks?: (links: Link[] | nu
     }));
   };
   await ensure(epoch);
-  return { links, runs: runsFile.runs, table, ensure };
+  const holding = new Map<Day, Promise<void>>();
+  const ensureHolds = async (at: number) => {
+    await ensure(at);
+    const days = [...new Set(serviceDays(at).map((d) => d.day))].filter((d) => DAYS.includes(d) && table.has(d));
+    await Promise.all(days.map((day) => {
+      if (!holding.has(day)) {
+        holding.set(day, fetchJson<{ holds: Array<[number, Hold[]]> }>(`${day}.holds`)
+          .then((f) => table.addHolds(day, f.holds))
+          .catch(() => { holding.delete(day); }));
+      }
+      return holding.get(day)!;
+    }));
+    return days.every((day) => table.day(day)?.held);
+  };
+  return { links, runs: runsFile.runs, table, blocks: new Blocks(runsFile.runs, links, file.blocks, file.conflicts), ensure, ensureHolds };
 }

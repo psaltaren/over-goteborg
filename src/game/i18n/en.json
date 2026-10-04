@@ -99,6 +99,14 @@
     "failed": "SL is not answering right now. The game’s own timetable is used meanwhile.",
     "moved": "The service changes over. You are on the platform."
   },
+  "tramReal": {
+    "toggle": "Real trams (Västtrafik)",
+    "hint": "The trams follow Västtrafik’s delays and cancellations live. Without a connection they keep to the timetable.",
+    "loading": "Fetching Västtrafik’s trams live…",
+    "on": "The trams now follow Västtrafik live.",
+    "off": "The trams keep to the timetable.",
+    "failed": "Västtrafik is not answering right now. The timetable is used meanwhile."
+  },
   "use": "use / climb up",
   "saver": {
     "start": "Screensaver"

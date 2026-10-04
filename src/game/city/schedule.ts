@@ -64,6 +64,9 @@ export interface Run {
   stops: RunStop[];
 }
 
+/** Where the block pass held a trip: at a stop (its index on the run, -1 for the whole trip), for so many seconds. */
+export type Hold = [number, number];
+
 /** One tram on one run: its arrival and departure at each of the run's stops, [arrival, departure, arrival, ...]. */
 export interface Trip {
   run: number;
@@ -71,6 +74,8 @@ export interface Trip {
   times: number[];
   /** Seconds the block pass held it, if it did: added at the stop before the conflict and carried on. */
   held?: number;
+  /** Where it held it (`blocks.ts`): its times less these are Västtrafik's, which live departures are matched by. */
+  holds?: Hold[];
 }
 
 /** The file: its runs, and the trips of each kind of day under the day's name. */

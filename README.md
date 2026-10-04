@@ -4,7 +4,7 @@
 
 ![A tram at Domkyrkan's stop in the game, the overhead wires above it](public/og.jpg)
 
-Walk the heart of Gothenburg at street level, from Centralen and Drottningtorget past Brunnsparken, Kungsportsplatsen and the cathedral to Grönsakstorget, Stenpiren and Järntorget. Every tram line through the area runs on Västtrafik's timetable, in the city's 45 m M34 cars, and on Västtrafik's live word: late when the real tram is late, gone when it is cancelled, with traffic notices on the platforms' displays and in the calls. Step aboard at a stop, ride it round the curves while it calls the next stop, and read the departure boards on the platforms. Game time is Unix time, so every visitor meets the same trams, and no two ever run into each other: the timetable is cleared of conflicts offline, second by second, and the delays as they come in.
+Walk the heart of Gothenburg at street level, from Centralen and Drottningtorget past Brunnsparken, Kungsportsplatsen and the cathedral to Grönsakstorget, Stenpiren and Järntorget. Every tram line through the area runs on Västtrafik's timetable, in the city's 45 m M34 cars, and on Västtrafik's live word: late when the real tram is late, gone when it is cancelled, with traffic notices on the platforms' displays and in the calls. Step aboard at a stop, ride it round the curves while it calls the next stop, and read the departure boards on the platforms. And under it all lies Västlänken: take the construction hoist down at the works by Rosenlund into Haga's rock hall, still being dug, walk the tunnel north under the canals, and come out on station Centralen's platforms, finished and waiting for its first train. Game time is Unix time, so every visitor meets the same trams, and no two ever run into each other: the timetable is cleared of conflicts offline, second by second, and the delays as they come in.
 
 Över Göteborg is a fork of Joel Hägvall's [Under Stockholm](https://github.com/joelhagvall/under-stockholm), the whole Stockholm metro in the browser, and keeps its method: live data reaches the game only through a relay of its own, and a quality gate that the coding agent cannot get past keeps the build fast and whole. The plan, its phases and what is done is in [PLAN.md](docs/PLAN.md).
 
@@ -36,6 +36,7 @@ Open http://localhost:5180. Walk with WASD and the mouse, run with Shift, jump w
 | `bun run load` | Time from click to playing, desktop and slow 4G phone (needs `bun run serve:prod`) |
 | `bun scripts/gbg-osm.ts` | The city's squares and the track graph from OpenStreetMap |
 | `bun scripts/gbg-gtfs.ts` | The trams' timetable from Västtrafik's GTFS feed, matched to the tracks and cleared of conflicts |
+| `bun scripts/gbg-underground.ts` | Västlänken's tracks, platforms and entrances from OpenStreetMap, for the tunnel under the city |
 | `bun scripts/vt-standin.ts` | A stand-in for Västtrafik's API, for the relay to ask without a key: `VASTTRAFIK_KEY=standin VASTTRAFIK_URL=http://localhost:8920 bun run dev` |
 
 The build fails if the landing page or the game grows past its compressed budget, and `bun run check` fails if it got slower than the numbers in `perf/baseline.json`. After launch, the relay's `/perf` page shows how the game runs for players: one anonymous report per visit (frame times, resolution, loading, class of device; no identifiers), and `/errors` what went wrong in their games.
@@ -48,20 +49,20 @@ Live data reaches the game only through the relay (a Cloudflare Worker in produc
 
 | Source | Used for | Licence |
 | --- | --- | --- |
-| [OpenStreetMap](https://www.openstreetmap.org/copyright), © OpenStreetMap contributors | The city's buildings, streets, parks and water, the tram tracks, Kopparmärra's place | [ODbL](https://opendatacommons.org/licenses/odbl/) |
+| [OpenStreetMap](https://www.openstreetmap.org/copyright), © OpenStreetMap contributors | The city's buildings, streets, parks and water, the tram tracks, Kopparmärra's place, Västlänken's tracks, platforms and entrances | [ODbL](https://opendatacommons.org/licenses/odbl/) |
 | [Trafiklab GTFS Regional](https://www.trafiklab.se/api/gtfs-datasets/gtfs-regional/), Västtrafik | The trams' timetable | CC0 1.0 |
 | [Västtrafik's API](https://developer.vasttrafik.se/) (Planera Resa v4, Trafikstörningar v1) | The trams' delays, cancellations and traffic notices, live | CC0 1.0 |
 | [Wikidata](https://www.wikidata.org/) | The tram lines' colours on the signs | CC0 1.0 |
 | [Open-Meteo](https://open-meteo.com/) | The weather in the city | [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) |
 | [SMHI](https://www.smhi.se/) | Weather warnings for Västra Götaland County | SMHI's open data terms, source named in the game |
 
-The city's data lives in `src/game/city/osm/`: the squares (`tiles/`), the track graph (`tracks.json`) and the timetable (`schedule.json`, and the game's packed copy in `trams/`). Built with [three.js](https://threejs.org) (MIT) and [Rapier](https://rapier.rs) (Apache 2.0). Everything heard in the city (the trams, the bell, rain, gulls, the cathedral's bell) is made at runtime; no sound files.
+Västlänken's depths, sizes and looks follow Trafikverket's published descriptions and pictures of the project (reference only, nothing of theirs is copied into the game). The city's data lives in `src/game/city/osm/`: the squares (`tiles/`), the track graph (`tracks.json`), the timetable (`schedule.json`, and the game's packed copy in `trams/`) and Västlänken (`underground.json`). Built with [three.js](https://threejs.org) (MIT) and [Rapier](https://rapier.rs) (Apache 2.0). Everything heard in the city (the trams, the bell, rain, gulls, the cathedral's bell) is made at runtime; no sound files.
 
 The Stockholm metro's code and data are still in the repository until they are removed ([PLAN.md](docs/PLAN.md), P7), out of the build: SL's open data through Trafiklab, Sveriges Radio's API, the Copernicus DEM GLO-30, Albert Guillaumes' [station plans](http://stations.albertguillaumes.cat/) (reference only) and public domain and CC0 sounds ([sources](public/audio/sfx/README.md)).
 
 ## Disclaimer
 
-A fan project. Not affiliated with or endorsed by Västtrafik, Göteborgs Spårvägar, Göteborgs Stad, SL, Region Stockholm, Sveriges Radio or SMHI, nor by Joel Hägvall.
+A fan project. Not affiliated with or endorsed by Västtrafik, Trafikverket, Göteborgs Spårvägar, Göteborgs Stad, SL, Region Stockholm, Sveriges Radio or SMHI, nor by Joel Hägvall.
 
 ## License
 

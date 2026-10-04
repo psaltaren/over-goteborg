@@ -35,6 +35,8 @@ import { TRAM_FLOOR, TRAM_PLATFORM, TRAM_WIDTH } from '../layout';
 import { stepAside } from './aside';
 import { grow, PLACES, placeNear, PLAY, STREET_Y, yawToward, type Pt } from './geo';
 import { loadTramData } from './tramData';
+import { loadUnderground, RAIL_HAGA, Underground, type Door } from './underground';
+import type { WeatherState } from '../weatherFeed';
 import { areaOf } from './liveMatch';
 import { LiveTrams, situationsFor, type LiveStatus } from './liveTrams';
 import { CitySounds } from './citySounds';
@@ -58,6 +60,10 @@ const FRAME_SLACK_MS = 2.5;
 const CONTEXT_WAIT = 4000;
 /** The open air's fog: from near to far, and the camera's reach just past it (as the metro's game out in the open). */
 const FOG = { near: 80, far: 410 };
+/** Under the street (Västlänken): a tunnel's dark, and as far as its lamps reach. */
+const UNDER_FOG = { near: 30, far: 230, color: 0x0c0d0f };
+/** The weather under the street: none. */
+const CALM: WeatherState = { kind: 'clear', intensity: 0, temperature: 12, source: 'season' };
 /**
  * How high over the street someone put somewhere is put: over a platform's kerb (`TRAM_PLATFORM`), so wherever they land
  * (the street, a platform) they drop the last bit onto it rather than start inside it.
@@ -146,6 +152,11 @@ export async function startGame(root: HTMLElement, options: GameOptions = {}): P
   // The squares lay the tracks in their streets, and wait for them (not for the timetable).
   const tramsUp = loadTramData(time, (links) => world.tiles.setTracks(links)).catch((err) => {
     console.warn('No trams:', err);
+    return null;
+  });
+  // Västlänken under the city, its lines fetched alongside (the city opens without them).
+  const undergroundUp = loadUnderground().catch((err) => {
+    console.warn('No Västlänken:', err);
     return null;
   });
   const sky = new Sky();
@@ -253,7 +264,27 @@ export async function startGame(root: HTMLElement, options: GameOptions = {}): P
   /** The traffic notice for a platform (its stop point and lines), in force now, if Västtrafik has one. */
   const noticeFor = (stop: string, lines: string[]) => (live?.enabled ? situationsFor(live.situations, time, { stop, area: areaOf(stop), lines })[0]?.title ?? null : null);
   // Kopparmärra, and the city's sounds: rain, gulls, Domkyrkan's bell.
-  scene.add(new Landmarks(physics).group);
+  const landmarks = new Landmarks(physics);
+  scene.add(landmarks.group);
+  const underFile = await undergroundUp;
+  const underground = underFile ? new Underground(underFile, physics, world) : null;
+  /** The door last stepped into, so standing in one says or does it once. */
+  let doorIn: Door | null = null;
+  /** Through a door: in the dark, to the other side, and the level's parts built round it before the light comes back. */
+  function through(door: Door): void {
+    const to = door.to;
+    if (!to) {
+      hud.say(door.say, 5);
+      return;
+    }
+    respawning = true;
+    void hud.blackout(() => {
+      world.under = door.under;
+      player.teleport(new Vector3(to.x, to.y, to.z), to.yaw);
+      world.ensureBuilt(to.x, to.z, 150);
+      hud.say(door.say, 5);
+    }).then(() => (respawning = false));
+  }
   const sounds = new CitySounds();
   let listening = debug;
 
@@ -440,7 +471,8 @@ export async function startGame(root: HTMLElement, options: GameOptions = {}): P
   // Where the player stands is kept every few seconds, for "continue where you were" on the landing page.
   let placeTimer = 0;
   function rememberPlace(): void {
-    if (debug || respawning) return;
+    // Under the street the game comes back where the player went down: on the street, as it starts.
+    if (debug || respawning || world.under) return;
     savePlace({ x: player.feet.x, y: player.feet.y, z: player.feet.z, yaw: player.yaw, station: placeNear(player.feet.x, player.feet.z).name, at: Date.now() });
   }
 
@@ -451,6 +483,7 @@ export async function startGame(root: HTMLElement, options: GameOptions = {}): P
     void hud
       .blackout(() => {
         const near = PLACES[placeNear(player.feet.x, player.feet.z).name];
+        world.under = false;
         player.teleport(new Vector3(near[0], STREET_Y + DROP, near[1]));
         hud.say(message, 6);
       })
@@ -640,7 +673,14 @@ export async function startGame(root: HTMLElement, options: GameOptions = {}): P
       }
       lap('live');
     }
-    if (trams) {
+    // Under the street the city above is out of sight and hearing: its trams, stops, statue and sky.
+    const under = world.under;
+    if (trams) trams.group.visible = !under;
+    if (stops) stops.group.visible = !under;
+    landmarks.group.visible = !under;
+    sky.mesh.visible = !under;
+    if (under) aboard = null;
+    if (trams && !under) {
       // Who stands in which tram is judged before they move; then they move, and the rider with them.
       aboard = respawning ? null : trams.aboard(player.feet, aboard);
       trams.update(time, player.feet.x, player.feet.z, sky.daylight, aboard?.id ?? null);
@@ -655,13 +695,17 @@ export async function startGame(root: HTMLElement, options: GameOptions = {}): P
     physics.step(dt);
     lap('physics');
     ride(dt);
-    // A doorway whose doors close on the player: in or out, whichever is nearer.
-    const doorway = trams?.doorway(player.feet);
+    // A doorway whose doors close on the player: in or out, whichever is nearer (never under the street, beneath one).
+    const doorway = under ? null : trams?.doorway(player.feet);
     if (doorway) player.teleport(new Vector3(doorway[0], player.feet.y + 0.02, doorway[1]));
     player.update(dt);
     world.keepUp(player.feet.x, player.feet.z, 6);
     lap('build');
-    if (player.feet.y < FALL_Y) respawn(text.unstuck.done);
+    if (player.feet.y < (under ? RAIL_HAGA - 20 : FALL_Y)) respawn(text.unstuck.done);
+    // A way up or down stepped into: through it (or told why not), once.
+    const door = underground && !respawning ? underground.doorAt(player.feet) : null;
+    if (door && door !== doorIn) through(door);
+    doorIn = door;
 
     // The place the player is nearest, in the status bar.
     const near = placeNear(player.feet.x, player.feet.z);
@@ -671,7 +715,7 @@ export async function startGame(root: HTMLElement, options: GameOptions = {}): P
     // How late Västtrafik's word has it, from a minute late.
     const late = riding && riding.next >= 0 ? tramData!.table.lateAt(riding.id, riding.next) : null;
     if (ridingLine && late !== null && late >= 60) ridingLine += `, ${sv.tram.late.replace('{min}', String(Math.floor(late / 60)))}`;
-    hud.setStatus(near.name, ridingLine);
+    hud.setStatus(under && underground ? underground.where(player.feet.x, player.feet.z) : near.name, ridingLine);
     const out = listening ? audio.output : null;
     if (out) placeListener(out, player.camera.position, player.yaw);
     weather.update(dt, time, null, out);
@@ -680,17 +724,26 @@ export async function startGame(root: HTMLElement, options: GameOptions = {}): P
     sky.update(player.camera.position, time, weather.state);
     setDaylight(sky.daylight);
     const fog = scene.fog as Fog;
-    fog.color.copy(sky.horizon);
+    // Under the street, a tunnel's dark and its shorter sight.
+    const far = under ? UNDER_FOG.far : FOG.far;
+    if (under) fog.color.setHex(UNDER_FOG.color);
+    else fog.color.copy(sky.horizon);
+    fog.near = under ? UNDER_FOG.near : FOG.near;
+    fog.far = far;
     (scene.background as Color).copy(fog.color);
-    if (Math.abs(player.camera.far - (FOG.far + 10)) > 4) {
-      player.camera.far = FOG.far + 10;
+    if (Math.abs(player.camera.far - (far + 10)) > 4) {
+      player.camera.far = far + 10;
       player.camera.updateProjectionMatrix();
     }
     hemisphere.intensity = 2.4 * (1 + Math.max(0, sky.daylight - 0.4));
-    openWeather.update(dt, time, weather.state, player.camera.position, 1, STREET_Y);
+    openWeather.update(dt, time, weather.state, player.camera.position, under ? 0 : 1, STREET_Y);
     lap('sky');
-    if (trams) tramSound(dt);
-    sounds.update(time, out, weather.state, sky.daylight, player.feet.x, player.feet.z);
+    if (trams && !under) tramSound(dt);
+    else if (under && heard) {
+      audio.setStreetNoise(0, 0);
+      heard = null;
+    }
+    sounds.update(time, out, under ? CALM : weather.state, under ? 0 : sky.daylight, player.feet.x, player.feet.z);
     if (player.stepped > 0) footsteps.update(player.stepped, player.running, 'stone', out);
     else footsteps.rest();
     secondTimer -= dt;
@@ -737,6 +790,8 @@ export async function startGame(root: HTMLElement, options: GameOptions = {}): P
       runs: tramData?.runs ?? [],
       /** The stops' platforms, shelters and displays. */
       stops,
+      /** Västlänken under the street: its line (`spine`), its doors, where along the line its parts lie (`at`). */
+      underground,
       /** Västtrafik's word and the live plan (`live.stats`, `live.live`, `live.situations`), null without a relay. */
       live,
       /** The sound, and the city's own (rain, gulls, the bell). */
@@ -763,6 +818,7 @@ export async function startGame(root: HTMLElement, options: GameOptions = {}): P
       },
       /** Stands the player on a named place (`PLACES`), looking toward another, with what is near built. */
       place(name: string, toward?: string) {
+        world.under = false;
         const at = PLACES[name];
         if (!at) throw new Error(`No place called ${name}: ${Object.keys(PLACES).join(', ')}`);
         const look = toward ? PLACES[toward] : null;
@@ -776,7 +832,11 @@ export async function startGame(root: HTMLElement, options: GameOptions = {}): P
        */
       async go(name: string, toward?: string) {
         world.clear();
-        this.place(name, toward);
+        // Under the street: Centralen's platform or Haga's hall (`Underground.scene`).
+        const below = name === 'Centralen' || name === 'Haga' ? underground?.scene(name) : null;
+        world.under = !!below;
+        if (below) player.teleport(new Vector3(below.x, below.y, below.z), below.yaw);
+        else this.place(name, toward);
         await world.settle(player.feet.x, player.feet.z, 30_000, BUILD_REACH);
         return this.info();
       },

@@ -20,6 +20,8 @@ interface Lazy {
   release?(): void;
   /** False while something the build needs is still on the way (a square's file): it waits in the queue. */
   ready?(): boolean;
+  /** Under the street (Västlänken, `underground.ts`): built and shown only while the player is down there. */
+  under?: boolean;
 }
 
 /** Built when the player comes this close: the fog's far edge, and some to spare for walking on. */
@@ -57,7 +59,27 @@ export class CityWorld {
   private readonly extents = new Map<Object3D, Rect>();
   private shownAt: [number, number] = [Number.NaN, Number.NaN];
   private shownCount = 0;
+  private below = false;
   readonly tiles: Tiles;
+
+  /**
+   * Whether the player is under the street: only what lies at the player's level is built and shown, the city's
+   * squares up on the street or the underground's sections down below (the two never in sight of each other).
+   */
+  get under(): boolean {
+    return this.below;
+  }
+
+  set under(below: boolean) {
+    if (below === this.below) return;
+    this.below = below;
+    this.shownAt = [Number.NaN, Number.NaN];
+  }
+
+  /** Whether a lazy build belongs to the level the player is at. */
+  private here(entry: Lazy): boolean {
+    return !!entry.under === this.below;
+  }
 
   /** @param windowLight how lit the city's windows are now, 0 by day to 1 at night. */
   constructor(physics: Physics, windowLight: () => number) {
@@ -87,13 +109,17 @@ export class CityWorld {
     }
   }
 
-  /** Queues something to be built when the player comes near `rect`, and taken down (with `release`) when far. */
-  later(rect: Rect, build: Lazy['build'], release?: Lazy['release'], ready?: Lazy['ready']): void {
-    this.lazy.push({ rect, build, groups: [], release, ready });
+  /**
+   * Queues something to be built when the player comes near `rect`, and taken down (with `release`) when far; `under`
+   * the street, only while the player is down there.
+   */
+  later(rect: Rect, build: Lazy['build'], release?: Lazy['release'], ready?: Lazy['ready'], under = false): void {
+    this.lazy.push({ rect, build, groups: [], release, ready, under });
   }
 
   /** Adds a lazily built group and warms it on the GPU. */
   *add(group: Object3D): Generator<void, void> {
+    group.userData.under = !!this.recording?.under;
     this.group.add(group);
     this.recording?.groups.push(group);
     yield* this.warmSteps(group);
@@ -149,7 +175,7 @@ export class CityWorld {
   private buildNear(x: number, z: number, reach: number): boolean {
     const off = (e: Lazy) => away(e.rect, x, z);
     const current = this.building;
-    if (current && off(current.entry) < reach) {
+    if (current && off(current.entry) < reach && this.here(current.entry)) {
       if (this.step(current.entry, current.steps)) this.building = this.paused.pop() ?? null;
       return true;
     }
@@ -157,14 +183,14 @@ export class CityWorld {
     let distance = Infinity;
     for (const l of this.lazy) {
       const d = off(l);
-      if (d < reach && d < distance && (!l.ready || l.ready())) {
+      if (d < reach && d < distance && this.here(l) && (!l.ready || l.ready())) {
         best = l;
         distance = d;
       }
     }
     if (!best) {
       // Something set aside may be what is near now.
-      const i = this.paused.findIndex((p) => off(p.entry) < reach);
+      const i = this.paused.findIndex((p) => off(p.entry) < reach && this.here(p.entry));
       if (i < 0) return false;
       if (current) this.paused.push(current);
       this.building = this.paused.splice(i, 1)[0];
@@ -195,7 +221,7 @@ export class CityWorld {
 
   /** Whether a build within `reach` of (`x`, `z`) is under way or set aside half done. */
   private halfBuilt(x: number, z: number, reach: number): boolean {
-    return [this.building, ...this.paused].some((b) => b && away(b.entry.rect, x, z) < reach);
+    return [this.building, ...this.paused].some((b) => b && away(b.entry.rect, x, z) < reach && this.here(b.entry));
   }
 
   /**
@@ -229,7 +255,7 @@ export class CityWorld {
 
   /** How many things within `reach` of (`x`, `z`) are not built yet: waiting for a file, or not started. */
   missing(x: number, z: number, reach = MUST_REACH): number {
-    return this.lazy.filter((l) => away(l.rect, x, z) < reach).length;
+    return this.lazy.filter((l) => away(l.rect, x, z) < reach && this.here(l)).length;
   }
 
   /**
@@ -260,7 +286,7 @@ export class CityWorld {
         extent = box.isEmpty() ? { x0: -Infinity, x1: Infinity, z0: -Infinity, z1: Infinity } : { x0: box.min.x, x1: box.max.x, z0: box.min.z, z1: box.max.z };
         this.extents.set(child, extent);
       }
-      child.visible = away(extent, x, z) < SHOW_REACH;
+      child.visible = away(extent, x, z) < SHOW_REACH && !!child.userData.under === this.below;
     }
   }
 }

@@ -74,6 +74,9 @@ export class CityWorld {
     if (below === this.below) return;
     this.below = below;
     this.shownAt = [Number.NaN, Number.NaN];
+    // What was built at the level left is taken down at once, its memory and colliders with it: the player only comes
+    // back through a door, and what lies there is built again behind the fade.
+    for (const entry of [...this.built]) if (!this.here(entry) && this.building?.entry !== entry && !this.paused.some((p) => p.entry === entry)) this.takeDown(entry);
   }
 
   /** Whether a lazy build belongs to the level the player is at. */
@@ -139,16 +142,21 @@ export class CityWorld {
   private evict(x: number, z: number, reach = EVICT_REACH): void {
     for (const entry of [...this.built]) {
       if (this.building?.entry === entry || this.paused.some((p) => p.entry === entry) || away(entry.rect, x, z) < reach) continue;
-      for (const group of entry.groups) {
-        this.group.remove(group);
-        this.extents.delete(group);
-        freeMemory(group);
-      }
-      entry.groups = [];
-      entry.release?.();
-      this.built.splice(this.built.indexOf(entry), 1);
-      this.lazy.push(entry);
+      this.takeDown(entry);
     }
+  }
+
+  /** Takes one build down, frees its memory and lets go of what it handed out, and queues it to be built again. */
+  private takeDown(entry: Lazy): void {
+    for (const group of entry.groups) {
+      this.group.remove(group);
+      this.extents.delete(group);
+      freeMemory(group);
+    }
+    entry.groups = [];
+    entry.release?.();
+    this.built.splice(this.built.indexOf(entry), 1);
+    this.lazy.push(entry);
   }
 
   /** Warms a new group's meshes on the GPU: each big mesh in a step of its own, then everything else together. */

@@ -99,6 +99,12 @@
     "failed": "SL is not answering right now. The game’s own timetable is used meanwhile.",
     "moved": "The service changes over. You are on the platform."
   },
+  "vastlanken": {
+    "hoistDown": "The construction hoist sinks down the shaft, into Västlänken.",
+    "hoistUp": "The construction hoist goes up to the works at Rosenlund.",
+    "exitUp": "The stair in the emergency exit leads up to Nils Ericsonsgatan.",
+    "exitLocked": "An emergency exit from Västlänken. It only opens from inside."
+  },
   "tramReal": {
     "toggle": "Real trams (Västtrafik)",
     "hint": "The trams follow Västtrafik’s delays and cancellations live. Without a connection they keep to the timetable.",

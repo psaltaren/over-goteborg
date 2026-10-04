@@ -64,6 +64,8 @@ const FOG = { near: 80, far: 410 };
 const UNDER_FOG = { near: 30, far: 230, color: 0x0c0d0f };
 /** The weather under the street: none. */
 const CALM: WeatherState = { kind: 'clear', intensity: 0, temperature: 12, source: 'season' };
+/** After going through a door, how long (ms) before another can be stepped into: time to step away from where one lands. */
+const DOOR_REST = 1500;
 /**
  * How high over the street someone put somewhere is put: over a platform's kerb (`TRAM_PLATFORM`), so wherever they land
  * (the street, a platform) they drop the last bit onto it rather than start inside it.
@@ -267,23 +269,33 @@ export async function startGame(root: HTMLElement, options: GameOptions = {}): P
   const landmarks = new Landmarks(physics);
   scene.add(landmarks.group);
   const underFile = await undergroundUp;
-  const underground = underFile ? new Underground(underFile, physics, world) : null;
-  /** The door last stepped into, so standing in one says or does it once. */
+  const underground = underFile ? new Underground(underFile, physics, world, () => time) : null;
+  /** The door last stepped into, so standing in one says or does it once; and no door at all for a moment after one. */
   let doorIn: Door | null = null;
+  let doorsFrom = 0;
   /** Through a door: in the dark, to the other side, and the level's parts built round it before the light comes back. */
   function through(door: Door): void {
     const to = door.to;
+    const say = text.vastlanken[door.say];
     if (!to) {
-      hud.say(door.say, 5);
+      hud.say(say, 5);
       return;
     }
     respawning = true;
     void hud.blackout(() => {
-      world.under = door.under;
-      player.teleport(new Vector3(to.x, to.y, to.z), to.yaw);
-      world.ensureBuilt(to.x, to.z, 150);
-      hud.say(door.say, 5);
-    }).then(() => (respawning = false));
+      // Whatever goes wrong building what lies there, the player is through, and the light comes back.
+      try {
+        world.under = door.under;
+        player.teleport(new Vector3(to.x, to.y, to.z), to.yaw);
+        world.ensureBuilt(to.x, to.z, 150);
+      } catch (err) {
+        console.error('Through a door:', err);
+      }
+      hud.say(say, 5);
+    }).finally(() => {
+      respawning = false;
+      doorsFrom = performance.now() + DOOR_REST;
+    });
   }
   const sounds = new CitySounds();
   let listening = debug;
@@ -702,8 +714,8 @@ export async function startGame(root: HTMLElement, options: GameOptions = {}): P
     world.keepUp(player.feet.x, player.feet.z, 6);
     lap('build');
     if (player.feet.y < (under ? RAIL_HAGA - 20 : FALL_Y)) respawn(text.unstuck.done);
-    // A way up or down stepped into: through it (or told why not), once.
-    const door = underground && !respawning ? underground.doorAt(player.feet) : null;
+    // A way up or down stepped into: through it (or told why not), once, and not straight back.
+    const door = underground && !respawning && performance.now() > doorsFrom ? underground.doorAt(player.feet) : null;
     if (door && door !== doorIn) through(door);
     doorIn = door;
 
@@ -740,10 +752,13 @@ export async function startGame(root: HTMLElement, options: GameOptions = {}): P
     lap('sky');
     if (trams && !under) tramSound(dt);
     else if (under && heard) {
+      // Quiet, the brakes too, as when the last tram goes out of hearing.
       audio.setStreetNoise(0, 0);
+      audio.updateJourney({ trainId: null, distance: 0, speed: 0, braking: 0, loudness: 0, aboard: false });
       heard = null;
     }
-    sounds.update(time, out, under ? CALM : weather.state, under ? 0 : sky.daylight, player.feet.x, player.feet.z);
+    // Under the street no rain, no gulls and no bell from Domkyrkan's tower.
+    sounds.update(time, out, under ? CALM : weather.state, under ? 0 : sky.daylight, player.feet.x, player.feet.z, under);
     if (player.stepped > 0) footsteps.update(player.stepped, player.running, 'stone', out);
     else footsteps.rest();
     secondTimer -= dt;

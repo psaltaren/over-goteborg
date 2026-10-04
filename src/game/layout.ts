@@ -509,14 +509,19 @@ export const VL = {
   platform: 0.73,
   bed: 0.4,
   rail: 0.17,
-  /** Centralen: its ends along x, its outer walls, the rows of columns between the brass ceilings and the high hall. */
-  station: { east: -140, west: 180, wallS: -29, wallN: 24, columnS: -9.2, columnN: 5.8, column: 1.1, brass: 4.6, columnStep: 12, beamStep: 7 },
+  /**
+   * Centralen: its ends along x (and its throat's west end, where the four tracks are two), its outer walls, the rows
+   * of columns between the brass ceilings and the high hall, the throat's ceiling over its rail.
+   */
+  station: { east: -140, west: 180, throat: 440, wallS: -29, wallN: 24, columnS: -9.2, columnN: 5.8, column: 1.1, brass: 4.6, columnStep: 12, beamStep: 7, throatHeight: 7.5 },
+  /** Its emergency exit: the doorway in the throat's south wall (along x), and the hut it comes up in on Nils Ericsonsgatan. */
+  exit: { doorX: 232, hutX: 209, hutZ: -101.6 },
   /** The glass boxes round the escalators up from the platforms: where along x, and how big. */
   stairs: { east: -88, middle: 58, length: 26, width: 7, rise: 6.1 },
   /** The double-track tunnel: half its width inside, its height over the rail, the walkways along both walls. */
   tunnel: { half: 5.9, height: 6.9, walk: 1.2, walkUp: 0.35, track: 2.35 },
-  /** Haga's rock hall: half its width, its walls' height and its crown's over the floor, how long it is dug out yet. */
-  haga: { half: 24, wall: 8, crown: 15.5, dug: 180, pilots: 90, pillarStep: 9.3 },
+  /** Haga's rock hall: where its north end lies (z), half its width, its walls' and crown's height over its floor, how long it is dug out yet. */
+  haga: { northZ: -1000, half: 24, wall: 8, crown: 15.5, dug: 180, pilots: 90, pillarStep: 9.3 },
   /** The construction hoist down to the tunnel near Haga: its cage, beside the tunnel's left wall. */
   hoist: { half: 1.3, out: 8.2 },
 } as const;

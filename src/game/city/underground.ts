@@ -67,7 +67,8 @@ export interface Door {
   to: { x: number; y: number; z: number; yaw: number } | null;
   /** Whether it leads under the street. */
   under: boolean;
-  say: string;
+  /** What is said going through (`text.vastlanken`, in the menus' language: it tells what the player does). */
+  say: 'hoistDown' | 'hoistUp' | 'exitUp' | 'exitLocked';
 }
 
 const AMBIENT = rgb(0x2a2b2e);
@@ -267,25 +268,26 @@ export class Underground {
   readonly at: { platformsE: number; platformsW: number; station: number; throat: number; railsEnd: number; rock: number; hoist: number; haga: number };
   private readonly tracks: Pt[][];
 
-  constructor(private readonly file: UndergroundFile, private readonly physics: Physics, private readonly world: CityWorld) {
-    // The rail falls from Centralen's level past its platforms to Haga's at its hall, evenly.
+  /** @param clock the game's clock (epoch seconds): whether Centralen has opened yet, when a part is built. */
+  constructor(private readonly file: UndergroundFile, private readonly physics: Physics, private readonly world: CityWorld, private readonly clock: () => number = () => Date.now() / 1000) {
+    // The rail falls from Centralen's level west of the station to Haga's at its hall, evenly.
     const flat = { from: 0, to: 0 };
     this.spine = new Spine(file.spine, (s) => (s <= flat.from ? RAIL_CENTRALEN : s >= flat.to ? RAIL_HAGA : RAIL_CENTRALEN + ((RAIL_HAGA - RAIL_CENTRALEN) * (s - flat.from)) / (flat.to - flat.from)));
     const sAt = (x: number, z: number) => this.spine.locate(x, z).s;
-    const hagaZ = -1000;
     let haga = this.spine.length;
-    for (let s = 0; s < this.spine.length; s += 2) if (this.spine.frame(s).z <= hagaZ) { haga = s; break; }
+    for (let s = 0; s < this.spine.length; s += 2) if (this.spine.frame(s).z <= VL.haga.northZ) { haga = s; break; }
     this.at = {
       platformsE: sAt(-106, 0),
       platformsW: sAt(156, 0),
       station: sAt(VL.station.west, 0),
-      throat: sAt(440, 0),
+      throat: sAt(VL.station.throat, 0),
       railsEnd: sAt(875, -258),
       rock: sAt(875, -258) + 140,
       hoist: sAt(1050, -895),
       haga,
     };
-    flat.from = this.at.platformsW;
+    // Level through the whole station, as it is built; falling from its west end, where the throat begins.
+    flat.from = this.at.station;
     flat.to = this.at.haga;
     this.tracks = file.tracks;
     this.register();
@@ -326,7 +328,7 @@ export class Underground {
     };
     const S = VL.station;
     lazily({ x0: S.east - 10, x1: S.west + 10, z0: S.wallS - 6, z1: S.wallN + 6 }, true, (c) => this.centralen(c));
-    lazily({ x0: S.west - 10, x1: 450, z0: -50, z1: 40 }, true, (c) => this.throat(c));
+    lazily({ x0: S.west - 10, x1: S.throat + 10, z0: -50, z1: 40 }, true, (c) => this.throat(c));
     for (let s = this.at.throat; s < this.at.haga; s += 130) {
       const from = s, to = Math.min(this.at.haga, s + 130);
       lazily(this.bounds(from, to, 12), true, (c) => this.tunnel(c, from, to));
@@ -339,12 +341,12 @@ export class Underground {
     // Down at the works, up from the hoist's foot, and up the emergency exit (which does not open from the street).
     const foot = this.hoistFoot();
     this.doors.push(
-      { x: cage.x, z: cage.z, y: STREET_Y, half: VL.hoist.half - 0.3, under: true, say: sv.vastlanken.hoistDown, to: { x: foot.out.x, y: foot.out.y + 0.05, z: foot.out.z, yaw: foot.yaw } },
-      { x: foot.x, z: foot.z, y: foot.y, half: VL.hoist.half - 0.3, under: false, say: sv.vastlanken.hoistUp, to: { x: cage.x, y: STREET_Y + 0.05, z: cage.z + VL.hoist.half + 1.6, yaw: 0 } },
-      { x: EXIT.x, z: EXIT.z - 1.4, y: STREET_Y, half: 0.9, under: false, say: sv.vastlanken.exitLocked, to: null },
+      { x: cage.x, z: cage.z, y: STREET_Y, half: VL.hoist.half - 0.3, under: true, say: 'hoistDown', to: { x: foot.out.x, y: foot.out.y + 0.05, z: foot.out.z, yaw: foot.yaw } },
+      { x: foot.x, z: foot.z, y: foot.y, half: VL.hoist.half - 0.3, under: false, say: 'hoistUp', to: { x: cage.x, y: STREET_Y + 0.05, z: cage.z + VL.hoist.half + 1.6, yaw: Math.PI } },
+      { x: EXIT.x, z: EXIT.z - 1.4, y: STREET_Y, half: 0.9, under: false, say: 'exitLocked', to: null },
     );
     const door = this.exitDoor();
-    this.doors.push({ x: door.x, z: door.z, y: door.y, half: 1.1, under: false, say: sv.vastlanken.exitUp, to: { x: EXIT.x, y: STREET_Y + 0.05, z: EXIT.z - 2.6, yaw: 0 } });
+    this.doors.push({ x: door.x, z: door.z, y: door.y, half: 1.1, under: false, say: 'exitUp', to: { x: EXIT.x, y: STREET_Y + 0.05, z: EXIT.z - 2.6, yaw: 0 } });
   }
 
   /** The plane round the line from `s0` to `s1`, `margin` meters out. */
@@ -398,7 +400,7 @@ export class Underground {
     const [x0, x1] = [S.east, S.west];
     const [zS, zN] = [S.wallS, S.wallN];
     const colS = S.columnS, colN = S.columnN, half = S.column / 2;
-    const opens = Date.now() / 1000 < CENTRALEN_OPENS;
+    const opens = this.clock() < CENTRALEN_OPENS;
 
     // The track bed, and the four tracks on their slabs.
     face(s.lit, v(x0, yF, zS), v(x1, yF, zS), v(x1, yF, zN), v(x0, yF, zN), UP, C.bed, 4);
@@ -435,6 +437,8 @@ export class Underground {
     }
     face(s.lit, v(x0, yF, zS), v(x0, yF, zN), v(x0, yHi, zN), v(x0, yHi, zS), v(1, 0, 0), C.pale, 3);
     box({ x: x0 - 1, y: yF, z: zS }, { x: x0, y: yHi + 1, z: zN });
+    // The west end over the brass: the station opens into its throat below it, whose ceiling lies lower than the hall's.
+    for (const nx of [-1, 1]) face(s.lit, v(x1, yB, zS), v(x1, yB, zN), v(x1, yHi, zN), v(x1, yHi, zS), v(nx, 0, 0), C.pale, 3);
 
     // The brass ceilings over each outer track and its platform, with lines of light, open over the glass boxes.
     const brass = s.artLayer(t.brass);
@@ -445,7 +449,8 @@ export class Underground {
       for (let i = 0; i + 1 < cuts.length; i += 2) face(brass, v(cuts[i], yB, za), v(cuts[i + 1], yB, za), v(cuts[i + 1], yB, zb), v(cuts[i], yB, zb), DOWN, rgb(0xffffff), 4);
       // Over a box, the brass reaches only round it.
       for (let i = 1; i + 1 < cuts.length; i += 2) {
-        const pz = (za + zb) / 2 < 0 ? -13.75 : 10.4;
+        const p = platforms[(za + zb) / 2 < 0 ? 0 : 1];
+        const pz = (p.z0 + p.z1) / 2;
         const w = VL.stairs.width / 2 + 0.4;
         for (const [zc, zd] of [[za, pz - w], [pz + w, zb]]) if (zd > zc) face(brass, v(cuts[i], yB, zc), v(cuts[i + 1], yB, zc), v(cuts[i + 1], yB, zd), v(cuts[i], yB, zd), DOWN, rgb(0xffffff), 4);
       }
@@ -501,7 +506,8 @@ export class Underground {
     yield;
 
     // The glass boxes round the escalators, up to the halls over the brass (shut until the station opens).
-    for (const [p, pz] of [[platforms[0], -13.75], [platforms[1], 10.4]] as const) {
+    for (const p of platforms) {
+      const pz = (p.z0 + p.z1) / 2;
       for (const [sx, up] of [[VL.stairs.east, sv.vastlanken.upPark], [VL.stairs.middle, sv.vastlanken.upGrand]] as const) {
         if (sx < p.x0 || sx + VL.stairs.length > p.x1) continue;
         yield* this.stairBox(s, colliders, sx, pz, yP, yB, signs, art, up, opens);
@@ -542,23 +548,28 @@ export class Underground {
     const run = rise / Math.tan(Math.PI / 6);
     const xa = x + 3, xb = xa + run, xc = x + L;
     const yTop = yP + rise;
+    const shaftTop = yTop + 3.2;
     const panes = new MeshBuilder(false);
-    // Glass on three sides up to the brass, black mullions, the front left open.
+    // Glass on three sides up to the brass, black mullions, a black rim along their tops; the front left open.
     for (const [za, zb, nz] of [[zc - W, zc - W, -1], [zc + W, zc + W, 1]] as const) {
       face(panes, v(x, yP, za), v(xc, yP, za), v(xc, yB, za), v(x, yB, za), v(0, 0, nz), rgb(0xffffff), 50);
       for (let mx = x; mx <= xc + 0.01; mx += 1.6) s.lit.box({ x: mx - 0.04, y: yP, z: za - 0.04 }, { x: mx + 0.04, y: yB, z: zb + 0.04 }, C.black);
-      colliders.push(physics.box({ x, y: yP, z: za - 0.05 }, { x: xc, y: yTop + 3, z: zb + 0.05 }));
+      s.lit.box({ x, y: yB - 0.12, z: za - 0.05 }, { x: xc, y: yB, z: zb + 0.05 }, C.black, ['py']);
+      colliders.push(physics.box({ x, y: yP, z: za - 0.05 }, { x: xc, y: shaftTop, z: zb + 0.05 }));
     }
     face(panes, v(xc, yP, zc - W), v(xc, yP, zc + W), v(xc, yB, zc + W), v(xc, yB, zc - W), v(1, 0, 0), rgb(0xffffff), 50);
-    s.lit.box({ x, y: yB - 0.12, z: zc - W }, { x: xc, y: yB, z: zc + W }, C.black, ['py']);
+    s.lit.box({ x: xc - 0.05, y: yB - 0.12, z: zc - W }, { x: xc + 0.05, y: yB, z: zc + W }, C.black, ['py']);
+    // The back pane is glass to see through, and a wall to walk against.
+    colliders.push(physics.box({ x: xc, y: yP, z: zc - W }, { x: xc + 0.1, y: shaftTop, z: zc + W }));
     const pane = new Mesh(panes.build(), glass());
     pane.renderOrder = 1;
     s.extras.add(pane);
-    // Above the brass the box goes on up as a shaft of slate to the hall, where a shutter is down.
+    // Above the brass the box goes on up as a shaft of slate to the hall, where a shutter is down at its far end.
     const slate = s.artLayer(surfaces().slate);
-    for (const [za, nz] of [[zc - W, 1], [zc + W, -1]] as const) face(slate, v(x, yB, za), v(xc, yB, za), v(xc, yTop + 3.2, za), v(x, yB, za).setY(yTop + 3.2), v(0, 0, nz), rgb(0xffffff), 3);
-    face(slate, v(x, yB, zc - W), v(x, yB, zc + W), v(x, yTop + 3.2, zc + W), v(x, yTop + 3.2, zc - W), v(1, 0, 0), rgb(0xffffff), 3);
-    face(s.lit, v(x, yTop + 3.2, zc - W), v(xc, yTop + 3.2, zc - W), v(xc, yTop + 3.2, zc + W), v(x, yTop + 3.2, zc + W), DOWN, C.pale, 3);
+    for (const [za, nz] of [[zc - W, 1], [zc + W, -1]] as const) face(slate, v(x, yB, za), v(xc, yB, za), v(xc, shaftTop, za), v(x, shaftTop, za), v(0, 0, nz), rgb(0xffffff), 3);
+    face(slate, v(x, yB, zc - W), v(x, yB, zc + W), v(x, shaftTop, zc + W), v(x, shaftTop, zc - W), v(1, 0, 0), rgb(0xffffff), 3);
+    face(slate, v(xc, yB, zc - W), v(xc, yB, zc + W), v(xc, yTop, zc + W), v(xc, yTop, zc - W), v(-1, 0, 0), rgb(0xffffff), 3);
+    face(s.lit, v(x, shaftTop, zc - W), v(xc, shaftTop, zc - W), v(xc, shaftTop, zc + W), v(x, shaftTop, zc + W), DOWN, C.pale, 3);
     face(s.lit, v(xc - 0.1, yTop, zc - W), v(xc - 0.1, yTop, zc + W), v(xc - 0.1, yTop + 3, zc + W), v(xc - 0.1, yTop + 3, zc - W), v(-1, 0, 0), C.shutter, 1);
     for (let y = yTop + 0.15; y < yTop + 3; y += 0.15) s.lit.box({ x: xc - 0.12, y, z: zc - W + 0.1 }, { x: xc - 0.1, y: y + 0.02, z: zc + W - 0.1 }, rgb(0x6f7378));
     // The flights: two escalators (stopped, walked like stairs) either side of a fixed stair, all at the same slope.
@@ -570,13 +581,14 @@ export class Underground {
         const ax = xa + (k * 0.2) / Math.tan(slope), ay = yP + k * 0.2;
         s.lit.box({ x: ax, y: ay, z: za }, { x: ax + 0.2 / Math.tan(slope), y: ay + 0.2, z: zb }, metal ? (k % 2 ? rgb(0x9aa1a6) : rgb(0x5d646a)) : C.pale, ['ny']);
       }
-      if (metal) for (const zr of [za + 0.05, zb - 0.05]) s.lit.box({ x: xa, y: yP + 0.9, z: zr - 0.04 }, { x: xb, y: yTop + 0.9, z: zr + 0.04 }, C.black, []);
+      // The escalators' handrails, black, a metre over the steps all the way up.
+      if (metal) for (const zr of [za + 0.05, zb - 0.05]) slopedBar(s.lit, v(xa - 0.6, yP + 0.95, zr), v(xb + 0.6, yTop + 0.95, zr), 0.08, C.black);
       colliders.push(physics.tiltedBox({ x: (xa + xb) / 2 + Math.sin(slope) * 0.1, y: yP + rise / 2 - Math.cos(slope) * 0.1, z: (za + zb) / 2 }, { x: len / 2, y: 0.1, z: (zb - za) / 2 }, slope));
     }
     // The landing at the top, up to the shutter.
     s.floor.box({ x: xb, y: yTop - 0.2, z: zc - W }, { x: xc, y: yTop, z: zc + W }, C.granite, ['ny']);
     colliders.push(physics.box({ x: xb, y: yTop - 0.2, z: zc - W }, { x: xc, y: yTop, z: zc + W }));
-    colliders.push(physics.box({ x: xc - 0.1, y: yTop, z: zc - W }, { x: xc + 0.5, y: yTop + 3.2, z: zc + W }));
+    colliders.push(physics.box({ x: xc - 0.1, y: yTop, z: zc - W }, { x: xc + 0.5, y: shaftTop, z: zc + W }));
     s.light(x + L / 2, yB - 0.6, zc, LAMP.warm, 0.9, 10);
     s.light(xb, yTop + 2.6, zc, LAMP.hall, 0.9, 8);
     // Its name over the way in, and on the shutter what it says.
@@ -590,7 +602,7 @@ export class Underground {
   private *throat(colliders: StaticCollider[]): Generator<void, Section> {
     const s = new Section('vl-throat', AMBIENT);
     const { physics } = this;
-    const x0 = VL.station.west, x1 = 440;
+    const x0 = VL.station.west, x1 = VL.station.throat;
     const yAt = (x: number) => this.spine.frame(this.spine.locate(x, 0).s).y;
     const door = this.exitDoor();
     for (let x = x0; x < x1; x += 10) {
@@ -620,11 +632,17 @@ export class Underground {
       const wall = (za: number, zb: number, side: number) => colliders.push(physics.turnedBox({ x: mid, y: ym + 3.5, z: (za + zb) / 2 + side * 0.5 }, { x: 5.3, y: 4.5, z: 0.5 }, Math.atan2(-(zb - za), xb - x)));
       if (!doorHere) wall(sa, sb, -1);
       else {
-        // Either side of the doorway, and a floor and walls in it.
-        colliders.push(physics.box({ x, y: ym - VL.bed, z: Math.min(sa, sb) - 2 }, { x: door.x - 1, y: ym + 8, z: Math.min(sa, sb) }));
-        colliders.push(physics.box({ x: door.x + 1, y: ym - VL.bed, z: Math.min(sa, sb) - 2 }, { x: xb, y: ym + 8, z: Math.min(sa, sb) }));
-        colliders.push(physics.box({ x: door.x - 1, y: door.y - 1, z: Math.min(sa, sb) - 5 }, { x: door.x + 1, y: door.y, z: Math.min(sa, sb) }));
-        colliders.push(physics.box({ x: door.x - 1, y: door.y, z: Math.min(sa, sb) - 6 }, { x: door.x + 1, y: door.y + 3, z: Math.min(sa, sb) - 5 }));
+        // Either side of the doorway, along the wall's slant as drawn; a floor and walls in the doorway.
+        const t = (door.x - 1 - x) / (xb - x), u = (door.x + 1 - x) / (xb - x);
+        const zA = sa + (sb - sa) * t, zB = sa + (sb - sa) * u;
+        const piece = (ax: number, az: number, bx: number, bz: number) => colliders.push(physics.turnedBox({ x: (ax + bx) / 2, y: ym + 3.5, z: (az + bz) / 2 - 0.5 }, { x: Math.hypot(bx - ax, bz - az) / 2 + 0.05, y: 4.5, z: 0.5 }, Math.atan2(-(bz - az), bx - ax)));
+        piece(x, sa, door.x - 1, zA);
+        piece(door.x + 1, zB, xb, sb);
+        const zd = Math.min(zA, zB);
+        colliders.push(physics.box({ x: door.x - 1, y: door.y - 1, z: zd - 5 }, { x: door.x + 1, y: door.y, z: zd + 0.2 }));
+        colliders.push(physics.box({ x: door.x - 1.6, y: door.y, z: zd - 6 }, { x: door.x - 1, y: door.y + 3, z: zd }));
+        colliders.push(physics.box({ x: door.x + 1, y: door.y, z: zd - 6 }, { x: door.x + 1.6, y: door.y + 3, z: zd }));
+        colliders.push(physics.box({ x: door.x - 1, y: door.y, z: zd - 6 }, { x: door.x + 1, y: door.y + 3, z: zd - 5 }));
       }
       wall(na, nb, 1);
       for (const [z, nz] of [[sa, 1], [na, -1]] as const) {
@@ -663,6 +681,7 @@ export class Underground {
   // ---- The tunnel, from the throat to Haga ----
 
   private *tunnel(colliders: StaticCollider[], s0: number, s1: number): Generator<void, Section> {
+    const { physics } = this;
     const T = VL.tunnel;
     const s = new Section(`vl-tunnel-${Math.round(s0)}`, DARK);
     const frames = this.spine.frames(s0, s1, 5);
@@ -714,15 +733,27 @@ export class Underground {
       }
       if (rails < s1) {
         const f = this.spine.frame(rails);
+        const along = v(f.tx, 0, f.tz), left = v(f.nx, 0, f.nz);
+        const ang = Math.atan2(-f.tz, f.tx);
+        // A buffer stop at each track's end.
         for (const u of [-T.track, T.track]) {
           const c = place(f, [u, 0.5]);
-          s.lit.box({ x: c.x - 0.6, y: c.y - 0.6, z: c.z - 0.6 }, { x: c.x + 0.6, y: c.y + 0.5, z: c.z + 0.6 }, C.orange);
+          orientedBox(s.lit, c.clone().setY(f.y + 0.05), v(0.5, 0.55, 1.2), along, left, C.orange);
+          colliders.push(physics.turnedBox({ x: c.x, y: f.y + 0.05, z: c.z }, { x: 0.5, y: 0.55, z: 1.2 }, ang));
         }
-        const fence = this.spine.frames(rails + 2, rails + 2.1, 0.1);
-        sweep(s.lit, fence, [-H + W, -VL.bed], [H - W, -VL.bed + 1.2], C.orange, [0, 0], 1);
-        const at = place(this.spine.frame(rails + 1.9), [0, 1.6]);
+        // And a barrier across the tracks beyond them, red and white; the walkways go on past it into the works.
+        const g = this.spine.frame(rails + 2);
+        const facing = v(-g.tx, 0, -g.tz);
+        for (let k = 0; k < 6; k++) {
+          const u0 = -H + W + ((2 * (H - W)) * k) / 6, u1 = -H + W + ((2 * (H - W)) * (k + 1)) / 6;
+          face(s.lit, place(g, [u0, 0.3]), place(g, [u1, 0.3]), place(g, [u1, 1.3]), place(g, [u0, 1.3]), facing, k % 2 ? rgb(0xf2f2f2) : rgb(0xc8332b), 1);
+          face(s.lit, place(g, [u1, 0.3]), place(g, [u0, 0.3]), place(g, [u0, 1.3]), place(g, [u1, 1.3]), facing.clone().negate(), k % 2 ? rgb(0xf2f2f2) : rgb(0xc8332b), 1);
+        }
+        const gc = place(g, [0, 0.8]);
+        colliders.push(physics.turnedBox({ x: gc.x, y: gc.y, z: gc.z }, { x: 0.1, y: 1.3, z: H - W }, ang));
+        const at = place(this.spine.frame(rails + 1.9), [0, 1.9]);
         const signs = new Signs(1);
-        signs.put(s.artLayer(signs.texture, true), at, v(-f.tx, 0, -f.tz), 3.2, 0.5, signs.row(sv.vastlanken.railEnd, 'notice'));
+        signs.put(s.artLayer(signs.texture, true), at, facing, 3.2, 0.5, signs.row(sv.vastlanken.railEnd, 'notice'));
       }
     }
     // Beyond the rails, the works' ventilation duct along the roof, and lamps on a cable under it.
@@ -756,7 +787,6 @@ export class Underground {
     // The hoist's foot in a chamber beside the left wall, its cage and its mast up the shaft.
     if (hoist >= s0 && hoist < s1) this.hoistShaft(s, colliders);
     // To stand on and against: the floor, the walkways, the walls (open at the hoist).
-    const { physics } = this;
     colliders.push(...sweptBoxes(physics, frames, -H, H, -VL.bed - 1, -VL.bed));
     for (const side of [-1, 1]) {
       colliders.push(...sweptBoxes(physics, frames, Math.min(side * H, side * (H - W)), Math.max(side * H, side * (H - W)), -VL.bed, up));
@@ -830,13 +860,13 @@ export class Underground {
     // Where the hall meets the tunnel from the north, a wall round the tunnel's mouth; at the far end, the rock not yet
     // dug, with the three pilot tunnels into it.
     const f0 = this.spine.frame(s0), f1 = this.spine.frame(dug);
-    endWall(s.lit, f0, Hg.half, Hg.wall, Hg.crown, floor, [[-VL.tunnel.half, VL.tunnel.half, VL.tunnel.height]], 1, C.shotcrete);
+    endWall(s.lit, f0, Hg.half, Hg.wall, Hg.crown, floor, [[-VL.tunnel.half, VL.tunnel.half, () => VL.tunnel.height]], 1, C.shotcrete);
     const pilots = [-16, 0, 16];
-    endWall(s.lit, f1, Hg.half, Hg.wall, Hg.crown, floor, pilots.map((u) => [u - 4, u + 4, 7] as [number, number, number]), -1, C.rock);
+    endWall(s.lit, f1, Hg.half, Hg.wall, Hg.crown, floor, pilots.map((u) => [u - 4, u + 4, (w: number) => pilotTop(w - u)] as Hole), -1, C.rock);
     yield;
     for (const u of pilots) {
       const pf = this.spine.frames(dug, end, 4);
-      sweepSection(s.lit, pf, [[u + 4, floor], [u + 4, 4.5], [u + 2.5, 6.6], [u, 7], [u - 2.5, 6.6], [u - 4, 4.5], [u - 4, floor]], C.rock, [u, 3], 2.5);
+      sweepSection(s.lit, pf, [[u + 4, floor], ...PILOT.map(([w, h]) => [u + w, h] as Cross), [u - 4, floor]], C.rock, [u, 3], 2.5);
       sweep(s.lit, pf, [u - 4, floor], [u + 4, floor], C.wetFloor, [0, 1], 3);
       const fe = this.spine.frame(end);
       endWall(s.lit, fe, 4, 4.5, 7, floor, [], -1, C.rock, u);
@@ -1011,8 +1041,8 @@ export class Underground {
 }
 
 /** The emergency exit's hut on the street (at the playable area's north edge, on Nils Ericsonsgatan), and the door it leads from below. */
-const EXIT = { x: 209, z: -101.6 } as const;
-const EXIT_DOOR_X = 232;
+const EXIT = { x: VL.exit.hutX, z: VL.exit.hutZ } as const;
+const EXIT_DOOR_X = VL.exit.doorX;
 
 /** A track's z at `x` (its line's points run along x through the station and its throat). */
 function trackZ(track: Pt[], x: number): number {
@@ -1048,6 +1078,14 @@ function layAlong(b: MeshBuilder, a: Vector3, c: Vector3): void {
   for (const r of [-0.7175, 0.7175]) strip(r - 0.035, r + 0.035, -VL.rail, 0, C.railTop);
 }
 
+/** A square bar `w` thick from `a` to `c`, which climbs along x (a handrail): its top and its two sides. */
+function slopedBar(b: MeshBuilder, a: Vector3, c: Vector3, w: number, paint: Paint): void {
+  const h = w / 2;
+  face(b, v(a.x, a.y + h, a.z - h), v(c.x, c.y + h, c.z - h), v(c.x, c.y + h, c.z + h), v(a.x, a.y + h, a.z + h), UP, paint, 6);
+  face(b, v(a.x, a.y - h, a.z - h), v(c.x, c.y - h, c.z - h), v(c.x, c.y + h, c.z - h), v(a.x, a.y + h, a.z - h), v(0, 0, -1), paint, 6);
+  face(b, v(a.x, a.y - h, a.z + h), v(c.x, c.y - h, c.z + h), v(c.x, c.y + h, c.z + h), v(a.x, a.y + h, a.z + h), v(0, 0, 1), paint, 6);
+}
+
 /** An eight-sided column, its foot at `p` (y the floor's own), `height` meters up from `floor`. */
 function column(b: MeshBuilder, p: Vector3, r: number, floor: number, top: number, paint: Paint): void {
   for (let j = 0; j < 8; j++) {
@@ -1070,24 +1108,36 @@ function orientedBox(b: MeshBuilder, c: Vector3, half: Vector3, along: Vector3, 
   for (const [a, b1, c1, d, n] of faces) face(b, a, b1, c1, d, n, paint, 3);
 }
 
+/** A pilot tunnel's arch, across from its middle: its corners up the sides, then round to its crown. */
+const PILOT: Cross[] = [[4, 4.5], [2.5, 6.6], [0, 7], [-2.5, 6.6], [-4, 4.5]];
+/** The pilot's roof `w` meters across from its middle. */
+function pilotTop(w: number): number {
+  const pts = [...PILOT].sort((a, b) => a[0] - b[0]);
+  for (let i = 1; i < pts.length; i++) {
+    const [a, b] = [pts[i - 1], pts[i]];
+    if (w >= a[0] && w <= b[0]) return a[1] + ((b[1] - a[1]) * (w - a[0])) / (b[0] - a[0]);
+  }
+  return 4.5;
+}
+
+/** An opening in an end wall: from `u0` to `u1` across, its top at each point across. */
+type Hole = [u0: number, u1: number, top: (u: number) => number];
+
 /**
  * The wall across a hall at a frame, from wall to wall and up into the vault, facing along the line (`facing` 1) or
- * back (-1), with arched-off openings [u0, u1, height] where tunnels go through; `offset` moves it across (a pilot's own).
+ * back (-1), with openings where tunnels go through, shaped as their roofs; `offset` moves it across (a pilot's own).
  */
-function endWall(b: MeshBuilder, f: Frame, half: number, wall: number, crown: number, floor: number, holes: Array<[number, number, number]>, facing: 1 | -1, paint: Paint, offset = 0): void {
+function endWall(b: MeshBuilder, f: Frame, half: number, wall: number, crown: number, floor: number, holes: Hole[], facing: 1 | -1, paint: Paint, offset = 0): void {
   const n = v(f.tx * facing, 0, f.tz * facing);
-  const cols: number[] = [-half, ...holes.flatMap(([a, b2]) => [a - offset, b2 - offset]), half].sort((a, c) => a - c);
   const top = (u: number) => {
     const t = Math.min(1, Math.abs(u) / half);
     return wall + (crown - wall) * Math.sqrt(Math.max(0, 1 - t * t));
   };
-  for (let i = 0; i + 1 < cols.length; i++) {
-    const [ua, ub] = [cols[i], cols[i + 1]];
-    const hole = holes.find(([a, b2]) => Math.abs(a - offset - ua) < 0.01 && Math.abs(b2 - offset - ub) < 0.01);
-    const bottom = hole ? hole[2] : floor;
-    for (let u = ua; u < ub - 0.01; u += 2) {
-      const ue = Math.min(ub, u + 2);
-      face(b, place(f, [u + offset, bottom]), place(f, [ue + offset, bottom]), place(f, [ue + offset, top(ue)]), place(f, [u + offset, top(u)]), n, paint, 3);
-    }
+  // Across in steps of half a meter: the wall from the floor, or from an opening's roof, up to the vault.
+  for (let u = -half; u < half - 0.01; u += 0.5) {
+    const ue = Math.min(half, u + 0.5), um = (u + ue) / 2;
+    const hole = holes.find(([a, z]) => um > a - offset && um < z - offset);
+    const from = (w: number) => (hole ? hole[2](w + offset) : floor);
+    face(b, place(f, [u + offset, from(u)]), place(f, [ue + offset, from(ue)]), place(f, [ue + offset, top(ue)]), place(f, [u + offset, top(u)]), n, paint, 3);
   }
 }

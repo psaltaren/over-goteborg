@@ -76,9 +76,9 @@ export class CitySounds {
 
   /**
    * Every frame, with sound on (`out`): the rain as heavy as the weather's, the bell at the hour (the epoch `time`), a
-   * gull now and then by day near the water round the player at (`x`, `z`).
+   * gull now and then by day near the water round the player at (`x`, `z`); `muffled` under the street, no bell.
    */
-  update(time: number, out: AudioOut | null, weather: WeatherState, daylight: number, x: number, z: number): void {
+  update(time: number, out: AudioOut | null, weather: WeatherState, daylight: number, x: number, z: number, muffled = false): void {
     if (!out) return;
     if (out !== this.out) this.start(out);
     const ctx = out.ctx;
@@ -89,7 +89,8 @@ export class CitySounds {
     const hour = Math.floor(time / 3600);
     if (c.minute === 0 && c.second < 2 && hour !== this.struck) {
       this.struck = hour;
-      if (c.hour >= FIRST_HOUR && c.hour <= LAST_HOUR) this.strike(c.hour % 12 || 12);
+      // Not heard through the rock under the street (`muffled`), nor struck late when the player comes up.
+      if (c.hour >= FIRST_HOUR && c.hour <= LAST_HOUR && !muffled) this.strike(c.hour % 12 || 12);
     }
     // A gull, now and then, near water within reach, by day.
     if (daylight > 0.3 && time > this.nextGull) {

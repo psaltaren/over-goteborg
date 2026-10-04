@@ -51,6 +51,10 @@ export const SCENES: Scene[] = [
   // Through the city at a run and more, along x, where the squares are built as you come: the stutter test.
   // A fixed length, so the quick check walks as far as the full one and ends where the baseline was measured.
   { name: 'Walking the inner city', set: "__us.go('Brunnsparken', 'Domkyrkan')", travel: 22, seconds: 12 },
+  // Under the street: on Centralen's south platform, looking west along it under the brass, the high hall beside.
+  { name: 'Västlänken, Centralen', set: "__us.go('Centralen')" },
+  // In Haga's rock hall, being dug: its pillars down the middle, the works' floodlights, the pilots at its far end.
+  { name: 'Västlänken, Haga', set: "__us.go('Haga')" },
 ];
 
 interface Profile {

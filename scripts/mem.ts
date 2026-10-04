@@ -39,6 +39,9 @@ const SCENARIOS: Scenario[] = [
   { name: 'Walking the city', round: "for (const p of ['Järntorget', 'Lilla Bommen', 'Kungsportsplatsen', 'Drottningtorget']) { await __us.go(p); settle(); }" },
   // Aboard a tram from Brunnsparken for a minute and a half, through the squares it passes, off again at Järntorget.
   { name: 'Riding a tram', round: "await __us.go('Brunnsparken', 'Kungsportsplatsen'); __us.step(1, 30); __us.ride(); for (let k = 0; k < 9; k++) __us.step(10, 15); await __us.go('Järntorget'); settle();" },
+  // Down the hoist at the works by Rosenlund, along Västlänken's tunnel to Centralen, up its emergency exit, and back
+  // to a square: the underground built round the player on the way and taken down behind.
+  { name: 'Down Västlänken', round: "await __us.go('Grönsakstorget'); const u = __us.underground; const V = __us.player.feet.constructor; const d = u.doors[0]; __us.player.teleport(new V(d.x, 18.05, d.z), 0); __us.step(0.2, 30); await wait(1000); __us.step(1, 30); settle(); for (let s = u.at.hoist; s > u.at.platformsW; s -= 250) { const f = u.spine.frame(s); __us.player.teleport(new V(f.x, f.y + 0.4, f.z), 0); __us.step(0.5, 15); settle(); } const e = u.doors[3]; await __us.go('Centralen'); __us.player.teleport(new V(e.x, e.y + 0.05, e.z), 0); __us.step(0.2, 30); await wait(1000); __us.step(1, 30); settle(); await __us.go('Drottningtorget'); settle();" },
 ];
 
 /** Hooks three.js and the canvases in the page, so what is uploaded, freed and still alive can be counted. */

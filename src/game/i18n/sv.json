@@ -831,6 +831,28 @@
     "notice": "Trafikinformation: {title}",
     "noticeHead": "Trafikinformation"
   },
+  "vastlanken": {
+    "centralen": "Centralen",
+    "haga": "Station Haga",
+    "tunnel": "Västlänken",
+    "site": "Västlänken, Rosenlund",
+    "track": "Spår {n}",
+    "upGrand": "Uppgång Grand Central",
+    "upPark": "Uppgång Park Central",
+    "exit": "Nödutgång",
+    "closed": "Stängt",
+    "opens": "Öppnar 13 december 2026",
+    "welcome": "Välkommen till Centralen",
+    "railEnd": "Spåret slutar här. Etapp 2 byggs.",
+    "siteName": "Västlänken · Haga",
+    "siteNo": "Arbetsplats. Obehöriga äga ej tillträde.",
+    "hagaOpens": "Station Haga · Beräknas öppna 2030",
+    "ppe": "Hjälm, varselväst och skyddsskor",
+    "hoistDown": "Bygghissen sjunker genom schaktet, ner till Västlänken.",
+    "hoistUp": "Bygghissen går upp till arbetsplatsen vid Rosenlund.",
+    "exitUp": "Trappan i nödutgången leder upp till Nils Ericsonsgatan.",
+    "exitLocked": "Nödutgång från Västlänken. Den går bara att öppna inifrån."
+  },
   "battery": {
     "toggle": "Batteriläge",
     "hint": "Sparar på datorn: 30 bilder i sekunden och färre pixlar. Fläktar och batteri tackar.",

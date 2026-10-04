@@ -494,3 +494,34 @@ export const TRAM_POLES = { every: 36, keep: 10, out: TRAM_WIDTH / 2 + 1.25, hal
 export const TRAM_PLATFORM = { height: 0.25, edge: TRAM_WIDTH / 2 + 0.08, width: 2.6, back: TRAM_LENGTH + 1.5, ahead: 1.5 } as const;
 /** How quickly a tram speeds up and slows down in the street, in m/s². */
 export const TRAM_ACCEL = 1.0;
+
+/**
+ * Västlänken under the city (`city/underground.ts`), after Trafikverket's figures: Centralen's platforms about 12 m
+ * under the street, Haga's rail about 9 m deeper; platforms 0.73 m over the rail; Centralen's brass ceiling over the
+ * outer tracks and its high concrete hall over the middle two; the double-track tunnel; Haga's rock hall, 50 m wide
+ * and up to about 15 m high, its pillars down the middle.
+ */
+export const VL = {
+  /** The rail top under the street at Centralen and at Haga, in meters. */
+  depthCentralen: 12.5,
+  depthHaga: 21.45,
+  /** A platform's top over the rail, the track bed under it, and a rail's height. */
+  platform: 0.73,
+  bed: 0.4,
+  rail: 0.17,
+  /**
+   * Centralen: its ends along x (and its throat's west end, where the four tracks are two), its outer walls, the rows
+   * of columns between the brass ceilings and the high hall, the throat's ceiling over its rail.
+   */
+  station: { east: -140, west: 180, throat: 440, wallS: -29, wallN: 24, columnS: -9.2, columnN: 5.8, column: 1.1, brass: 4.6, columnStep: 12, beamStep: 7, throatHeight: 7.5 },
+  /** Its emergency exit: the doorway in the throat's south wall (along x), and the hut it comes up in on Nils Ericsonsgatan. */
+  exit: { doorX: 232, hutX: 209, hutZ: -101.6 },
+  /** The glass boxes round the escalators up from the platforms: where along x, and how big. */
+  stairs: { east: -88, middle: 58, length: 26, width: 7, rise: 6.1 },
+  /** The double-track tunnel: half its width inside, its height over the rail, the walkways along both walls. */
+  tunnel: { half: 5.9, height: 6.9, walk: 1.2, walkUp: 0.35, track: 2.35 },
+  /** Haga's rock hall: where its north end lies (z), half its width, its walls' and crown's height over its floor, how long it is dug out yet. */
+  haga: { northZ: -1000, half: 24, wall: 8, crown: 15.5, dug: 180, pilots: 90, pillarStep: 9.3 },
+  /** The construction hoist down to the tunnel near Haga: its cage, beside the tunnel's left wall. */
+  hoist: { half: 1.3, out: 8.2 },
+} as const;

@@ -1,6 +1,6 @@
 {
-  "at": "2026-10-03T22:47:26.842Z",
-  "commit": "be8b8e9",
+  "at": "2026-10-04T08:29:47.013Z",
+  "commit": "f881238",
   "fps": {
     "desktop": {
       "Drottningtorget": {
@@ -15,17 +15,17 @@
       },
       "Brunnsparken": {
         "fps": 60,
-        "p95": 16.7,
+        "p95": 16.8,
         "slow": 0,
         "worst": 17,
         "hitches": 0,
         "pixelRatio": 2,
         "calls": 67,
-        "triangles": 266079
+        "triangles": 268955
       },
       "Kungsportsplatsen": {
         "fps": 60,
-        "p95": 16.8,
+        "p95": 16.7,
         "slow": 0,
         "worst": 17,
         "hitches": 0,
@@ -45,13 +45,13 @@
       },
       "Trams at Drottningtorget": {
         "fps": 60,
-        "p95": 16.8,
+        "p95": 16.7,
         "slow": 0,
         "worst": 17,
         "hitches": 0,
         "pixelRatio": 2,
-        "calls": 70,
-        "triangles": 167150
+        "calls": 72,
+        "triangles": 167222
       },
       "Riding a tram": {
         "fps": 60,
@@ -65,19 +65,39 @@
       },
       "Walking the inner city": {
         "fps": 60,
-        "p95": 16.7,
+        "p95": 16.8,
         "slow": 0,
         "worst": 17,
         "hitches": 0,
         "pixelRatio": 2,
         "calls": 63,
         "triangles": 162534
+      },
+      "Västlänken, Centralen": {
+        "fps": 60,
+        "p95": 16.8,
+        "slow": 0,
+        "worst": 17,
+        "hitches": 0,
+        "pixelRatio": 2,
+        "calls": 20,
+        "triangles": 37978
+      },
+      "Västlänken, Haga": {
+        "fps": 60,
+        "p95": 16.8,
+        "slow": 0,
+        "worst": 17,
+        "hitches": 0,
+        "pixelRatio": 2,
+        "calls": 2,
+        "triangles": 13970
       }
     },
     "phone": {
       "Drottningtorget": {
         "fps": 60,
-        "p95": 16.7,
+        "p95": 16.8,
         "slow": 0,
         "worst": 17,
         "hitches": 0,
@@ -87,13 +107,13 @@
       },
       "Brunnsparken": {
         "fps": 60,
-        "p95": 16.7,
+        "p95": 16.8,
         "slow": 0,
         "worst": 17,
         "hitches": 0,
         "pixelRatio": 1.5,
         "calls": 42,
-        "triangles": 164412
+        "triangles": 167288
       },
       "Kungsportsplatsen": {
         "fps": 60,
@@ -107,7 +127,7 @@
       },
       "Järntorget": {
         "fps": 60,
-        "p95": 16.8,
+        "p95": 16.7,
         "slow": 0,
         "worst": 17,
         "hitches": 0,
@@ -122,8 +142,8 @@
         "worst": 17,
         "hitches": 0,
         "pixelRatio": 1.5,
-        "calls": 41,
-        "triangles": 128396
+        "calls": 43,
+        "triangles": 128468
       },
       "Riding a tram": {
         "fps": 60,
@@ -137,32 +157,52 @@
       },
       "Walking the inner city": {
         "fps": 60,
-        "p95": 16.7,
+        "p95": 16.8,
         "slow": 0,
         "worst": 17,
         "hitches": 0,
         "pixelRatio": 1.5,
         "calls": 36,
         "triangles": 96682
+      },
+      "Västlänken, Centralen": {
+        "fps": 60,
+        "p95": 16.8,
+        "slow": 0,
+        "worst": 17,
+        "hitches": 0,
+        "pixelRatio": 1.5,
+        "calls": 18,
+        "triangles": 37974
+      },
+      "Västlänken, Haga": {
+        "fps": 60,
+        "p95": 16.7,
+        "slow": 0,
+        "worst": 17,
+        "hitches": 0,
+        "pixelRatio": 1.5,
+        "calls": 2,
+        "triangles": 13970
       }
     }
   },
   "load": {
     "desktop": {
-      "downloadS": 0.13310000002384187,
-      "bytes": 880316,
+      "downloadS": 0.16220000004768373,
+      "bytes": 897404,
       "wasmBytes": 652517,
-      "wasmDoneS": 0.13310000002384187,
-      "compileS": 0.012600000023841857,
-      "readyS": 0.41779999995231626
+      "wasmDoneS": 0.16220000004768373,
+      "compileS": 0.024,
+      "readyS": 0.554
     },
     "phone": {
-      "downloadS": 4.723299999952316,
-      "bytes": 880316,
+      "downloadS": 4.837100000023842,
+      "bytes": 897404,
       "wasmBytes": 652517,
-      "wasmDoneS": 4.723299999952316,
-      "compileS": 3.9378000000715256,
-      "readyS": 5.947200000047684
+      "wasmDoneS": 4.837100000023842,
+      "compileS": 4.051699999928474,
+      "readyS": 6.070600000023842
     }
   }
 }

@@ -43,6 +43,9 @@ interface DayIndex {
   trips: Trip[];
   /** Where the block pass held each held trip, by its place in the list (Västtrafik's times are its times less these). */
   holds: Map<number, Hold[]>;
+  /** Whether the holds are here (fetched apart, for the live trams), and how often they have been given. */
+  held: boolean;
+  version: number;
   buckets: Map<number, number[]>;
   /** For each stop (its id), the day's departures from it in time order, made the first time a stop's are asked for. */
   departures?: Map<string, Array<{ t: number; trip: number; stop: number }>>;
@@ -91,8 +94,8 @@ export class TripTable {
     for (const [day, trips] of Object.entries(days) as Array<[Day, Trip[]]>) this.addDay(day, trips);
   }
 
-  /** A day's trips, once fetched, with where the block pass held them (a trip's own `holds`, or by its place in the list). */
-  addDay(day: Day, trips: Trip[], holds: Array<[number, Hold[]]> = []): void {
+  /** A day's trips, once fetched; where the block pass held them as the trips have it (`holds`), if they do. */
+  addDay(day: Day, trips: Trip[]): void {
     const buckets = new Map<number, number[]>();
     trips.forEach((t, i) => {
       for (let b = Math.floor(t.times[0] / BUCKET); b <= Math.floor(t.times[t.times.length - 1] / BUCKET); b++) {
@@ -100,13 +103,22 @@ export class TripTable {
         buckets.get(b)!.push(i);
       }
     });
-    const held = new Map<number, Hold[]>(holds);
-    trips.forEach((t, i) => { if (t.holds) held.set(i, t.holds); });
-    this.days.set(day, { trips, buckets, holds: held });
+    const holds = new Map<number, Hold[]>();
+    trips.forEach((t, i) => { if (t.holds) holds.set(i, t.holds); });
+    this.days.set(day, { trips, buckets, holds, held: trips.some((t) => t.holds), version: 0 });
   }
 
-  /** A day's trips, and where the block pass held them, once fetched. */
-  day(day: Day): { trips: Trip[]; holds: Map<number, Hold[]> } | null {
+  /** Where the block pass held a day's trips, by their place in its list (fetched apart: `<day>.holds.json`). */
+  addHolds(day: Day, holds: Array<[number, Hold[]]>): void {
+    const index = this.days.get(day);
+    if (!index) return;
+    index.holds = new Map(holds);
+    index.held = true;
+    index.version++;
+  }
+
+  /** A day's trips, and where the block pass held them (`held`: whether that is known yet; `version` changes when it comes). */
+  day(day: Day): { trips: Trip[]; holds: Map<number, Hold[]>; held: boolean; version: number } | null {
     return this.days.get(day) ?? null;
   }
 
@@ -144,9 +156,14 @@ export class TripTable {
     return p.times[2 * k + 1] - planned;
   }
 
-  /** The plans of trips that ended before `epoch` let go of. */
+  /** The plans of trips that ended before `epoch`, or of a service day no longer running, let go of. */
   dropPlansBefore(epoch: number): void {
+    const days = serviceDays(epoch);
     for (const [id, p] of this.plans) {
+      if (!days.some((sd) => sd.start === p.start && sd.day === p.day)) {
+        this.plans.delete(id);
+        continue;
+      }
       const base = this.days.get(p.day)?.trips[p.index].times;
       const end = Math.max(p.times?.[p.times.length - 1] ?? -Infinity, base?.[base.length - 1] ?? -Infinity);
       if (p.start + end < epoch) this.plans.delete(id);
@@ -201,10 +218,13 @@ export class TripTable {
         if (this.state(index.trips[i].run, index.trips[i].times, t, id, (out[n] ??= {} as TramState))) n++;
       }
     }
-    // The trips the live plan keeps, wherever their times have taken them.
+    // The trips the live plan keeps, wherever their times have taken them: of the service days running, as the
+    // timetable counts them now (the night the clocks change, yesterday's start moves an hour at midnight, its trips
+    // with it, and plans made under the old start no longer stand for them).
+    const days = serviceDays(epoch);
     for (const [id, p] of this.plans) {
       const times = p.times;
-      if (!times) continue;
+      if (!times || !days.some((sd) => sd.start === p.start && sd.day === p.day)) continue;
       const t = epoch - p.start;
       if (t < times[0] || t > times[times.length - 1]) continue;
       const trip = this.days.get(p.day)?.trips[p.index];

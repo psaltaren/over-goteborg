@@ -182,6 +182,66 @@ describe('the live plan', () => {
     expect(late).toBeLessThan(420);
   });
 
+  test('tells apart two trips on one line leaving one platform at one second, by where they go', () => {
+    const trams = table();
+    const sd = serviceDays(stockholmEpoch(2026, 10, 7, 15, 0)).reduce((a, b) => (b.start > a.start ? b : a));
+    // Line 1 toward Marklandsgatan and toward Tynnered, both planned from Brunnsparken at 15:41.
+    const data = trams.day('weekday')!;
+    const pair = data.trips.flatMap((trip, i) => {
+      const run = file.runs[trip.run];
+      const k = run.stops.findIndex((st) => st.stop === '9022014001760005');
+      return k >= 0 && k < run.stops.length - 1 && unheld(trip.times, data.holds.get(i) ?? [])[2 * k + 1] === 56460 ? [{ i, k, headsign: run.headsign }] : [];
+    });
+    expect(pair.length).toBe(2);
+    const planned = sd.start + 56460;
+    const word = new LiveMatcher(trams).match(pair.map((p, n) => ['9022014001760005', '1', planned, planned + 60 * (n + 1), 0, p.headsign] as LiveDeparture), planned - 600);
+    for (const [n, p] of pair.entries()) expect(word.get(tripId(sd.start, p.i))?.leaves.get(p.k)).toBe(planned + 60 * (n + 1));
+  });
+
+  test('measures a delay against Västtrafik\'s own planned time, when the timetable has the trip a little apart', () => {
+    const trams = table();
+    const at = stockholmEpoch(2026, 10, 7, 8, 0);
+    const sd = serviceDays(at).reduce((a, b) => (b.start > a.start ? b : a));
+    const data = trams.day('weekday')!;
+    const i = data.trips.findIndex((trip) => sd.start + trip.times[1] > at + 120);
+    const run = file.runs[data.trips[i].run];
+    const k = run.stops.findIndex((st, n) => st.stop && st.s >= 0 && st.s <= run.length && n < run.stops.length - 1);
+    const ours = sd.start + unheld(data.trips[i].times, data.holds.get(i) ?? [])[2 * k + 1];
+    const line = (run.signs ?? []).reduce((l, x) => (x.s <= run.stops[k].s ? x.line : l), run.line);
+    // Västtrafik planned it 30 s later than the timetable read, and expects it 90 s after that.
+    const word = new LiveMatcher(trams).match([[run.stops[k].stop, line, ours + 30, ours + 120, 0]], at);
+    expect(word.get(tripId(sd.start, i))?.leaves.get(k)).toBe(ours + 90);
+  });
+
+  test('never shows a plan made under a service day the clocks have moved', () => {
+    // Plans made on the Saturday night the clocks go back, then the night after midnight: no two trams overlap.
+    const trams = table();
+    const planner = new LivePlanner(trams, blocks());
+    const matcher = new LiveMatcher(trams);
+    const said = morning(trams, 13);
+    const from = stockholmEpoch(2026, 10, 24, 23, 30), to = stockholmEpoch(2026, 10, 25, 1, 30);
+    const problems: string[] = [];
+    for (let t = from; t <= to && problems.length < 5; t += 1) {
+      if ((t - from) % 30 === 0) planner.plan(t, t < from + 45 * 60 ? matcher.match(said(t), t) : new Map());
+      problems.push(...overlaps(trams.at(t), t));
+    }
+    expect(problems).toEqual([]);
+  }, 120_000);
+
+  test('lets go of a planning that is done after a trip planned would have set out', () => {
+    const trams = table();
+    const planner = new LivePlanner(trams, blocks());
+    const at = stockholmEpoch(2026, 10, 7, 8, 0);
+    const word = new LiveMatcher(trams).match(morning(trams, 5)(at), at);
+    // Done two minutes later, as after a pause: nothing changes.
+    const steps = planner.update(at, word, () => at + 120);
+    let step = steps.next();
+    while (!step.done) step = steps.next();
+    expect(step.value).toBe(false);
+    expect(trams.planned).toBe(0);
+    expect(planner.stats.discarded).toBe(true);
+  });
+
   test('starts afresh when the clock jumps', () => {
     const trams = table();
     const planner = new LivePlanner(trams, blocks());

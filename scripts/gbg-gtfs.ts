@@ -28,6 +28,7 @@
 import { existsSync, mkdirSync, rmSync, statSync } from 'node:fs';
 import { grow, PLAY, toGame, TRACK_REACH, type Pt } from '../src/game/city/geo';
 import { Blocks, firstIn, type Held } from '../src/game/city/blocks';
+import { areaOf } from '../src/game/city/liveMatch';
 import { DAYS, NIGHT_BEFORE, OUT_OF_SERVICE, packTrips, runPieces, type Day, type Hold, type Run, type RunStop, type ScheduleFile, type Sign, type Trip } from '../src/game/city/schedule';
 import { endDir, pointAt, polylineLength, prevsOf, readLinks, startDir, turn, type TrackFile } from '../src/game/city/trackData';
 import { TRAM_ACCEL, TRAM_LENGTH } from '../src/game/layout';
@@ -43,8 +44,10 @@ const URL_BASE = 'https://opendata.samtrafiken.se/gtfs/vt/vt.zip';
 const OUT = 'src/game/city/osm/schedule.json';
 /** The game's copy: the runs, and each day's trips packed (`packTrips`). */
 const GAME_DIR = 'src/game/city/osm/trams';
-/** The stop areas and lines the relay asks Västtrafik about. */
+/** The stop areas and lines the relay asks Västtrafik about, how far ahead, and the most departures one call lists. */
 const LIVE = 'src/game/city/osm/live.json';
+const LIST_MINUTES = 40;
+const LIST_MOST = 80;
 const LICENSE = 'Timetable from Västtrafik through Trafiklab (GTFS Regional), CC0 1.0: https://www.trafiklab.se/api/gtfs-datasets/gtfs-regional/';
 /** Västtrafik's trams in GTFS's extended route types. */
 const TRAM = '900';
@@ -715,26 +718,63 @@ rmSync(GAME_DIR, { recursive: true, force: true });
 mkdirSync(GAME_DIR, { recursive: true });
 writeJson(`${GAME_DIR}/runs.json`, { license: LICENSE, format: 'As schedule.json\'s runs (bun scripts/gbg-gtfs.ts).', feed: feed.feed_version, dates }, { runs });
 for (const day of DAYS) {
-  writeJson(`${GAME_DIR}/${day}.json`, {
+  writeJson(`${GAME_DIR}/${day}.json`, { license: LICENSE, format: 'Each trip as [run, then its times as whole seconds, each from the one before] (packTrips in src/game/city/schedule.ts).' }, { trips: packTrips(days[day]) });
+  // Apart, fetched only by the live trams (src/game/city/liveTrams.ts): the landing page's board has no use for them.
+  writeJson(`${GAME_DIR}/${day}.holds.json`, {
     license: LICENSE,
-    format: 'trips: each as [run, then its times as whole seconds, each from the one before] (packTrips in src/game/city/schedule.ts). ' +
-      'holds: [a trip\'s place in the list, where the block pass held it as [[stop index (-1 the whole trip), seconds], ...]]: its times less these are Västtrafik\'s.',
-  }, { trips: packTrips(days[day]), holds: days[day].flatMap((t, i) => (t.holds ? [[i, t.holds]] : [])) });
+    format: 'holds: [a trip\'s place in its day\'s list, where the block pass held it as [[stop index (-1 the whole trip), seconds], ...]]: its times less these are Västtrafik\'s.',
+  }, { holds: days[day].flatMap((t, i) => (t.holds ? [[i, t.holds]] : [])) });
 }
 // What the relay asks Västtrafik about (server/vasttrafik.ts): the stop areas the trams stop at in the area, with their
 // tram platforms, and the tram lines through it, by Västtrafik's ids (GTFS Regional's are the same).
-const areas = new Map<string, { gid: string; name: string; platforms: Set<string> }>();
+const areas = new Map<string, { gid: string; name: string; platforms: Map<string, number[]> }>();
 for (const r of runs) {
   for (const st of r.stops) {
     if (!st.stop || st.s < 0 || st.s > r.length) continue;
-    const gid = `${st.stop.slice(0, 3)}1${st.stop.slice(4, 13)}000`;
-    if (!areas.has(gid)) areas.set(gid, { gid, name: st.name, platforms: new Set() });
-    areas.get(gid)!.platforms.add(st.platform);
+    const gid = areaOf(st.stop);
+    if (!areas.has(gid)) areas.set(gid, { gid, name: st.name, platforms: new Map() });
+    const platforms = areas.get(gid)!.platforms;
+    if (!platforms.has(st.platform)) platforms.set(st.platform, []);
   }
 }
+// The weekday's departures from each platform, to split the busiest areas into calls Västtrafik's list holds: at most
+// LIST_MOST in any LIST_MINUTES (the relay asks for that span, with room for the minute before).
+for (const t of days.weekday) {
+  const r = runs[t.run];
+  r.stops.forEach((st, k) => {
+    if (!st.stop || st.s < 0 || st.s > r.length || k === r.stops.length - 1) return;
+    areas.get(areaOf(st.stop))?.platforms.get(st.platform)?.push(t.times[2 * k + 1]);
+  });
+}
+const most = (times: number[]) => {
+  const sorted = [...times].sort((a, b) => a - b);
+  let top = 0;
+  for (let i = 0, j = 0; i < sorted.length; i++) {
+    while (sorted[i] - sorted[j] > (LIST_MINUTES + 1) * 60) j++;
+    top = Math.max(top, i - j + 1);
+  }
+  return top;
+};
+const queries: Array<{ gid: string; platforms: string[] }> = [];
+for (const area of [...areas.values()].sort((a, b) => a.name.localeCompare(b.name))) {
+  let group: string[] = [];
+  for (const p of [...area.platforms.keys()].sort()) {
+    const tried = [...group, p];
+    if (group.length && most(tried.flatMap((x) => area.platforms.get(x)!)) > LIST_MOST) {
+      queries.push({ gid: area.gid, platforms: group });
+      group = [p];
+    } else group = tried;
+  }
+  if (group.length) queries.push({ gid: area.gid, platforms: group });
+}
 const inService = new Set(runs.flatMap((r) => [r.line, ...(r.signs ?? []).map((x) => x.line)]).filter(Boolean));
-writeJson(LIVE, { license: LICENSE, format: 'bun scripts/gbg-gtfs.ts. areas: the stop areas with stops in the area, with their tram platforms; lines: the tram lines through it, each with its route ids (Västtrafik\'s line gids).' }, {
-  areas: [...areas.values()].sort((a, b) => a.name.localeCompare(b.name)).map((a) => ({ gid: a.gid, name: a.name, platforms: [...a.platforms].sort() })),
+writeJson(LIVE, {
+  license: LICENSE,
+  format: 'bun scripts/gbg-gtfs.ts. areas: the stop areas with stops in the area; queries: the calls the relay makes for their departures (an area, or the busiest split by platforms, so a call\'s list holds the span asked for); lines: the tram lines through it, each with its route ids (Västtrafik\'s line gids).',
+  span: LIST_MINUTES,
+}, {
+  areas: [...areas.values()].sort((a, b) => a.name.localeCompare(b.name)).map((a) => ({ gid: a.gid, name: a.name })),
+  queries,
   lines: [...inService].sort((a, b) => a.localeCompare(b, 'sv', { numeric: true })).map((line) => ({ line, gids: [...routes].filter(([, name]) => name === line).map(([id]) => id).sort() })),
 });
 console.log(`${runs.length} runs from ${patterns.size} patterns`);

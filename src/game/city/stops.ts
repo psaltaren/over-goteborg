@@ -9,6 +9,7 @@ import { CanvasTexture, Group, Matrix4, Mesh, MeshBasicMaterial, PlaneGeometry, 
 import type { Paint } from '../gfx/builder';
 import { rgb } from '../gfx/color';
 import { FONT, fitText, MONO } from '../gfx/signs';
+import sv from '../i18n/sv.json';
 import { TRAM_PLATFORM, TRAM_SECTION_ENDS, TRAM_WIDTH } from '../layout';
 import type { Physics, StaticCollider } from '../physics';
 import { Section } from '../world/section';
@@ -36,8 +37,8 @@ const DISPLAY_REACH = 70;
 const NAME_W = 256, NAME_H = 48;
 /** A display with a traffic notice shows it this many seconds of each turn of so many. */
 const NOTICE_SHOWN = 4, NOTICE_TURN = 12;
-/** The heading of a notice on a display (in-world, Swedish). */
-const NOTICE_HEAD = 'Trafikinformation';
+/** The heading of a notice on a display (in-world, so Swedish). */
+const NOTICE_HEAD = sv.tram.noticeHead;
 
 /** A stop's platform: its stop point, its name and letter, along which run's track, and how it lies. */
 interface Platform {

@@ -9,7 +9,7 @@
 // Without live data (none, stale, or turned off) a trip is planned as the timetable has it, and the trams are back on
 // the timetable within the half hour, those already on their way finishing as they set out.
 
-import { Blocks, hold, unheld, type Held, type Occupancy } from './blocks';
+import { Blocks, hold, unheld, unhold, type Held, type Occupancy } from './blocks';
 import { MAX_EARLY, MAX_LATE, TripTable, type TripAt } from './tripTable';
 
 /** What Västtrafik says of one trip: when its tram leaves stops (by their index on its run, epoch seconds), and whether it runs at all. */
@@ -32,16 +32,17 @@ export class LivePlanner {
   private readonly occupancies = new Map<number, { times: number[]; occupancy: Occupancy }>();
   private last = -Infinity;
   /** What the last planning did, for `__us` and the tests. */
-  stats = { fixed: 0, planned: 0, live: 0, held: 0, cancelled: 0, stuck: 0 };
+  stats: { fixed: number; planned: number; live: number; held: number; cancelled: number; stuck: number; discarded?: boolean } = { fixed: 0, planned: 0, live: 0, held: 0, cancelled: 0, stuck: 0 };
 
   constructor(private readonly table: TripTable, private readonly blocks: Blocks) {}
 
   /**
    * Plans the trips of the next half hour from `epoch` (seconds) that have not set out, with what Västtrafik says of
    * them (`live`, by trip id; empty to follow the timetable), pausing after each trip so the caller can spread it over
-   * frames. The plans are given to the table all at once when it is done.
+   * frames. The plans are given to the table all at once when it is done, if the clock (`now`) has not passed the
+   * first moment a trip planned could set out: then it returns false, and nothing is changed.
    */
-  *update(epoch: number, live: ReadonlyMap<number, Live>): Generator<void, void> {
+  *update(epoch: number, live: ReadonlyMap<number, Live>, now: () => number = () => epoch): Generator<void, boolean> {
     // A clock that jumped (the debug clock, a tab put away for an hour) leaves plans made for another time: back to the
     // timetable, which is clear of clashes, and planned afresh from here.
     if (epoch < this.last - 1 || epoch - this.last > HORIZON - 5 * 60) {
@@ -66,6 +67,7 @@ export class LivePlanner {
         if (!known) yield;
       } else if (trip.start + Math.min(trip.base[1], trip.times?.[1] ?? Infinity) <= epoch + HORIZON) {
         todo.push({ trip, times: this.wanted(trip, live.get(trip.id), epoch) });
+        if (todo.length % 8 === 0) yield;
       }
     }
     for (const id of this.occupancies.keys()) if (!keep.has(id)) this.occupancies.delete(id);
@@ -89,13 +91,23 @@ export class LivePlanner {
         plans.push({ trip, times: null });
         continue;
       }
-      const { holds, cleared } = yield* this.blocks.clearSteps(trip.run, times, held, trip.start, occupancy ?? undefined);
-      if (holds.length) stats.held++;
-      // A trip that cannot be cleared, or would run later than a plan may make it, does not run: never two in a block.
+      const cleared = yield* this.blocks.clearSteps(trip.run, times, held, trip.start, occupancy ?? undefined);
+      if (cleared.holds.length) stats.held++;
+      // A trip that cannot be cleared, or would run later than a plan may make it, does not run: never two in a block,
+      // and the blocks of one that does not run are free for the rest.
       const late = times.some((v, k) => v - trip.base[k] > MAX_LATE || trip.base[k] - v > MAX_EARLY);
-      if (!cleared || late) stats.stuck++;
-      plans.push({ trip, times: cleared && !late ? times : null });
+      if (cleared.occupancy && late) unhold(cleared.occupancy, held);
+      if (!cleared.cleared || late) stats.stuck++;
+      plans.push({ trip, times: cleared.cleared && !late ? times : null });
       yield;
+    }
+    // Given to the table only while no trip planned has set out meanwhile (every one sets out after `epoch` + LEAD): a
+    // planning that took longer (a paused game, a tab put away, a slow phone) is let go of, the trams keep the plans
+    // they had, which are clear of one another, and the caller plans again.
+    const at = now();
+    if (at < epoch - 1 || at > epoch + LEAD) {
+      this.stats = { ...stats, discarded: true };
+      return false;
     }
     for (const { trip, times } of plans) {
       if (times && times.every((v, k) => v === trip.base[k])) this.table.clearPlan(trip.id);
@@ -103,6 +115,7 @@ export class LivePlanner {
     }
     stats.planned = plans.length;
     this.stats = stats;
+    return true;
   }
 
   /** Plans the next half hour at once (the tests, and the first planning while the game loads). */

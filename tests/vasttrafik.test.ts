@@ -15,7 +15,7 @@ advance(0);
 const background = new Set<Promise<unknown>>();
 const waitUntil = (task: Promise<unknown>) => { background.add(task); void task.finally(() => background.delete(task)); };
 const settle = () => Promise.all([...background]);
-const areas = live.areas.map((a) => a.gid);
+const queries = live.queries.map((q) => `${q.gid}|${q.platforms.join(',')}`);
 /** What the portal's authentication key looks like: base64 of a client id and secret (made up). */
 const KEY = btoa('client:no secret');
 
@@ -75,7 +75,7 @@ test('a crowd of players costs Västtrafik one token and one budget of calls, an
   expect(cancelled).toBe(0);
 });
 
-test('however often players ask, Västtrafik gets at most its budget a minute, one token, and every stop area a fresh list', async () => {
+test('however often players ask, Västtrafik gets at most its budget a minute, one token, and every call a fresh list', async () => {
   const calls = vasttrafik();
   const ask = relay();
   const sent: number[] = [];
@@ -88,9 +88,9 @@ test('however often players ask, Västtrafik gets at most its budget a minute, o
     for (const c of calls.slice(before)) {
       sent.push(clock);
       const area = /stop-areas\/(\d+)\//.exec(c.url)?.[1];
-      if (area) asked.set(area, clock);
+      if (area) asked.set(`${area}|${new URL(c.url).searchParams.get('platforms')}`, clock);
     }
-    if (step > 120) for (const gid of areas) worst = Math.max(worst, clock - (asked.get(gid) ?? 0));
+    if (step > 120) for (const key of queries) worst = Math.max(worst, clock - (asked.get(key) ?? 0));
     const minute = sent.filter((t) => clock - t < 60_000).length;
     expect(minute).toBeLessThanOrEqual(VT_PER_MINUTE);
   }
@@ -105,6 +105,22 @@ test('a refused token is fetched again once', async () => {
   const answer = await ask('vt');
   expect(answer.status).toBe(200);
   expect(calls.filter((c) => c.url.endsWith('/token')).length).toBe(2);
+});
+
+test('a key Västtrafik keeps refusing costs a token now and then, never the budget', async () => {
+  const calls = vasttrafik({ refuse: Infinity });
+  advance(120);
+  const ask = relay();
+  const sent: number[] = [];
+  for (let step = 0; step < 30 * 60; step++) {
+    advance(1);
+    const before = calls.length;
+    await ask('vt');
+    for (let i = before; i < calls.length; i++) sent.push(clock);
+    expect(sent.filter((t) => clock - t < 60_000).length).toBeLessThanOrEqual(VT_PER_MINUTE);
+  }
+  // Refused twice in a row, the feed waits ten minutes: a half hour costs a few tokens, not one every pause.
+  expect(calls.filter((c) => c.url.endsWith('/token')).length).toBeLessThanOrEqual(4);
 });
 
 test('without the key the trams\' feeds are off, and nobody is asked', async () => {

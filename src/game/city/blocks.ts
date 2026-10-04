@@ -109,8 +109,8 @@ export class Blocks {
     }
   }
 
-  /** `clear`, pausing after each try (the game spreads it over frames). */
-  *clearSteps(run: number, times: number[], held: Held, offset = 0, known?: Occupancy): Generator<void, { holds: Hold[]; cleared: boolean }> {
+  /** `clear`, pausing after each try (the game spreads it over frames); also the occupancy it held, when it cleared. */
+  *clearSteps(run: number, times: number[], held: Held, offset = 0, known?: Occupancy): Generator<void, { holds: Hold[]; cleared: boolean; occupancy?: Occupancy }> {
     const holds: Hold[] = [];
     const stops = this.runs[run].stops.length;
     for (let tries = 0; tries < TRIES; tries++) {
@@ -119,7 +119,7 @@ export class Blocks {
       const clash = this.clash(occupancy, held);
       if (!clash) {
         hold(occupancy, held);
-        return { holds, cleared: true };
+        return { holds, cleared: true, occupancy };
       }
       const shift = Math.max(1, clash.until - clash.at);
       let stop = -1;
@@ -161,6 +161,15 @@ export function hold(occupancy: Occupancy, held: Held): void {
   for (const [b, span] of occupancy) {
     if (!held.has(b)) held.set(b, []);
     held.get(b)!.push(span);
+  }
+}
+
+/** A trip's blocks taken back from what `held` holds (the very spans `hold` added). */
+export function unhold(occupancy: Occupancy, held: Held): void {
+  for (const [b, span] of occupancy) {
+    const spans = held.get(b);
+    const at = spans?.indexOf(span) ?? -1;
+    if (at >= 0) spans!.splice(at, 1);
   }
 }
 

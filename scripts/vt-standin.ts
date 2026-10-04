@@ -9,6 +9,7 @@
 // was asked, when. Nothing here is Västtrafik's data beyond the timetable the game already has.
 
 import { unheld } from '../src/game/city/blocks';
+import { areaOf } from '../src/game/city/liveMatch';
 import schedule from '../src/game/city/osm/schedule.json';
 import live from '../src/game/city/osm/live.json';
 import { signAt, type ScheduleFile } from '../src/game/city/schedule';
@@ -28,17 +29,16 @@ const lineDelay = (line: string, at: number) => {
   return hash(n) < 0.3 ? 0 : Math.round(240 * hash(n, 1) * (0.5 + 0.5 * Math.sin(at / 1800 + 6 * hash(n, 2))));
 };
 
-/** The departures from a stop area's platforms in the next `minutes`, as Västtrafik's API would give them. */
-function departures(area: string, minutes: number): unknown[] {
+/** The departures from a stop area's platforms (all, or those named) in the next `minutes`, as Västtrafik's API gives them. */
+function departures(area: string, minutes: number, platforms: string[] | null, limit: number): unknown[] {
   const now = Date.now() / 1000;
   const out: Array<{ at: number; body: unknown }> = [];
-  const prefix = area.slice(4, 13);
   for (const sd of serviceDays(now)) {
     file[sd.day].forEach((trip, i) => {
       const run = file.runs[trip.run];
       const planned = unheld(trip.times, trip.holds ?? []);
       run.stops.forEach((st, k) => {
-        if (!st.stop || st.stop.slice(4, 13) !== prefix || st.s < 0 || st.s > run.length || k === run.stops.length - 1) return;
+        if (!st.stop || areaOf(st.stop) !== area || (platforms && !platforms.includes(st.platform)) || st.s < 0 || st.s > run.length || k === run.stops.length - 1) return;
         const at = sd.start + planned[2 * k + 1];
         if (at < now - 60 || at > now + minutes * 60) return;
         const line = signAt(run, st.s).line;
@@ -56,7 +56,7 @@ function departures(area: string, minutes: number): unknown[] {
       });
     });
   }
-  return out.sort((a, b) => a.at - b.at).map((d) => d.body);
+  return out.sort((a, b) => a.at - b.at).slice(0, limit).map((d) => d.body);
 }
 
 const server = Bun.serve({
@@ -71,7 +71,11 @@ const server = Bun.serve({
     }
     if (!request.headers.get('authorization')?.startsWith('Bearer ')) return new Response('', { status: 401 });
     const area = /^\/pr\/v4\/stop-areas\/(\d{16})\/departures$/.exec(url.pathname)?.[1];
-    if (area) return Response.json({ results: departures(area, Number(url.searchParams.get('timeSpanInMinutes') ?? 60)), pagination: { limit: 100, offset: 0, size: 0 } });
+    if (area) {
+      const limit = Number(url.searchParams.get('limit') ?? 10);
+      const results = departures(area, Number(url.searchParams.get('timeSpanInMinutes') ?? 60), url.searchParams.get('platforms')?.split(',') ?? null, limit);
+      return Response.json({ results, pagination: { limit, offset: 0, size: results.length } });
+    }
     if (url.pathname === '/ts/v1/traffic-situations') {
       const now = Date.now();
       const six = live.lines.find((l) => l.line === '6');

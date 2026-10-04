@@ -35,7 +35,8 @@ import { TRAM_FLOOR, TRAM_PLATFORM, TRAM_WIDTH } from '../layout';
 import { stepAside } from './aside';
 import { grow, PLACES, placeNear, PLAY, STREET_Y, yawToward, type Pt } from './geo';
 import { loadTramData } from './tramData';
-import { areaOf, LiveTrams, situationsFor, type LiveStatus } from './liveTrams';
+import { areaOf } from './liveMatch';
+import { LiveTrams, situationsFor, type LiveStatus } from './liveTrams';
 import { CitySounds } from './citySounds';
 import { Landmarks } from './landmarks';
 import { Stops } from './stops';
@@ -233,7 +234,7 @@ export async function startGame(root: HTMLElement, options: GameOptions = {}): P
   let liveChosen: string | null = null;
   try { liveChosen = localStorage.getItem('under-stockholm:live-trams'); } catch { /* No choice saved. */ }
   const liveWanted = debug ? params.has('live') || liveChosen === 'on' : liveChosen !== 'off';
-  const live = tramData && relayUrl() ? new LiveTrams(tramData.table, tramData.blocks, liveWanted) : null;
+  const live = tramData && relayUrl() ? new LiveTrams(tramData, liveWanted) : null;
   let liveWas: LiveStatus = live?.status ?? 'off';
   let liveFailTold = false;
   if (live) {
@@ -506,7 +507,7 @@ export async function startGame(root: HTMLElement, options: GameOptions = {}): P
     // On the way from a stop: the next one called, with the chime, in the browser's Swedish voice.
     if (st.line && st.speed > 0.5 && (called.id !== st.id || called.next !== st.next)) {
       called = { id: st.id, next: st.next };
-      let message = nextName ? sv.tram.next.replace('{stop}', nextName) : sv.tram.last;
+      let message = nextName ? sv.tram.next.replace('{stop}', () => nextName) : sv.tram.last;
       // Västtrafik's notice on the line or the next stop, after it, once a ride (not the slight ones).
       if (called.id !== noticed.id) noticed = { id: st.id, ids: new Set() };
       const nextStop = st.next >= 0 ? run.stops[st.next].stop : '';
@@ -514,7 +515,9 @@ export async function startGame(root: HTMLElement, options: GameOptions = {}): P
         .find((n) => n.severity !== 'slight' && !noticed.ids.has(n.id)) : undefined;
       if (notice) {
         noticed.ids.add(notice.id);
-        message = `${message} ${sv.tram.notice.replace('{title}', notice.title.replace(/\.?$/, '.'))}`;
+        // Västtrafik's words as they are, never read as a replacement pattern.
+        const title = notice.title.replace(/\.?$/, '.');
+        message = `${message} ${sv.tram.notice.replace('{title}', () => title)}`;
       }
       audio.announce(message, () => hud.say(message, notice ? 10 : 6), () => {}, true);
     }

@@ -1,6 +1,7 @@
 // The trams' data as the game fetches it from its own origin when it starts, as it fetches the squares: the track graph
 // (`osm/tracks.json`), the runs (`osm/trams/runs.json`), and the timetable of each service day running (`osm/trams/
-// <day>.json`, packed), not bundled into the game's code. A new day's is fetched when the clock comes to it.
+// <day>.json`, packed), not bundled into the game's code. A new day's is fetched when the clock comes to it. Where the
+// block pass held each trip (`osm/trams/<day>.holds.json`) only the live trams need, and fetch when they start.
 
 import { Blocks } from './blocks';
 import { readLinks, type Link, type TrackFile } from './trackData';
@@ -43,6 +44,8 @@ export interface TramData {
   blocks: Blocks;
   /** Fetches the timetables of the service days running at `epoch` that are not here yet; resolves once they are. */
   ensure(epoch: number): Promise<void>;
+  /** The same for where the block pass held their trips, which only the live trams need; resolves true once they are here. */
+  ensureHolds(epoch: number): Promise<boolean>;
 }
 
 /**
@@ -61,8 +64,8 @@ export async function loadTramData(epoch: number, onTracks?: (links: Link[] | nu
     const wanted = [...new Set(serviceDays(at).map((d) => d.day))].filter((d) => DAYS.includes(d) && !table.has(d));
     await Promise.all(wanted.map((day) => {
       if (!pending.has(day)) {
-        pending.set(day, fetchJson<{ trips: number[][]; holds?: Array<[number, Hold[]]> }>(day)
-          .then((f) => table.addDay(day, unpackTrips(f.trips), f.holds))
+        pending.set(day, fetchJson<{ trips: number[][] }>(day)
+          .then((f) => table.addDay(day, unpackTrips(f.trips)))
           // Offline: no trams that day, and asked for again a minute on.
           .catch(() => { pending.delete(day); }));
       }
@@ -70,5 +73,19 @@ export async function loadTramData(epoch: number, onTracks?: (links: Link[] | nu
     }));
   };
   await ensure(epoch);
-  return { links, runs: runsFile.runs, table, blocks: new Blocks(runsFile.runs, links, file.blocks, file.conflicts), ensure };
+  const holding = new Map<Day, Promise<void>>();
+  const ensureHolds = async (at: number) => {
+    await ensure(at);
+    const days = [...new Set(serviceDays(at).map((d) => d.day))].filter((d) => DAYS.includes(d) && table.has(d));
+    await Promise.all(days.map((day) => {
+      if (!holding.has(day)) {
+        holding.set(day, fetchJson<{ holds: Array<[number, Hold[]]> }>(`${day}.holds`)
+          .then((f) => table.addHolds(day, f.holds))
+          .catch(() => { holding.delete(day); }));
+      }
+      return holding.get(day)!;
+    }));
+    return days.every((day) => table.day(day)?.held);
+  };
+  return { links, runs: runsFile.runs, table, blocks: new Blocks(runsFile.runs, links, file.blocks, file.conflicts), ensure, ensureHolds };
 }

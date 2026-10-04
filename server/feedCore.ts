@@ -16,6 +16,7 @@
 //   GET /feeds/vt          data: { departures, areas }    the trams' departures at the stop areas in the city from
 //                          Västtrafik (server/vasttrafik.ts), with VASTTRAFIK_KEY
 //   GET /feeds/situations  data: [situation]               Västtrafik's traffic situations on the trams in the city
+//                          (both answer 404 { error: 'off' } on a relay without the key)
 
 import { SL_DEVIATIONS, slDepartures, SMHI_WARNINGS, SR_NEWS, WEATHER } from '../src/game/feeds';
 import { parseHeadlines } from '../src/game/news';
@@ -29,6 +30,8 @@ const RETRY_MS = 15_000;
 const MAX_RETRY_MS = 10 * 60_000;
 
 interface Feed {
+  /** Not to be had from this relay (it has no key for the source): answered as off at once, and nobody is asked. */
+  off?: boolean;
   /** Seconds a copy stays fresh. */
   ttl: number;
   /** Seconds a copy may still be served while refreshing or while the source fails. */
@@ -173,15 +176,10 @@ export function createFeeds(options: FeedOptions = {}): Feeds {
     news: { ttl: 30 * 60, keep: 24 * 60 * 60, load: async () => parseHeadlines(await (await source(SR_NEWS)).text()) },
     // The game asks every half minute while it plays; each load spends what Västtrafik's budget (server/vasttrafik.ts)
     // allows on the stop areas asked about longest ago, so each is a minute old at most.
-    vt: { ttl: 20, keep: 3 * 60, load: async () => vasttrafik().departures() },
-    situations: { ttl: 5 * 60, keep: 60 * 60, load: async () => vasttrafik().situations() },
+    // Without the key, off: the game keeps the trams to the timetable and stops asking.
+    vt: { off: !options.vasttrafik, ttl: 20, keep: 3 * 60, load: () => options.vasttrafik!.departures() },
+    situations: { off: !options.vasttrafik, ttl: 5 * 60, keep: 60 * 60, load: () => options.vasttrafik!.situations() },
   };
-
-  /** Västtrafik, or a refusal that pauses the feed for a long while: without the key there is nothing to ask. */
-  function vasttrafik(): Vasttrafik {
-    if (!options.vasttrafik) throw new SourceError('no VASTTRAFIK_KEY', 503, MAX_RETRY_MS);
-    return options.vasttrafik;
-  }
 
   interface Copy { data: unknown; at: number }
   const copies = new Map<string, Copy>();
@@ -220,6 +218,7 @@ export function createFeeds(options: FeedOptions = {}): Feeds {
       if (!match) return null;
       if (!isFeed(match[1])) return new Response('Unknown feed', { status: 404, headers });
       const feed = FEEDS[match[1]];
+      if (feed.off) return Response.json({ error: 'off' }, { status: 404, headers });
       const copy = await get(match[1], feed);
       if (!copy) return Response.json({ error: 'unavailable' }, { status: 502, headers });
       const age = Math.floor((Date.now() - copy.at) / 1000);

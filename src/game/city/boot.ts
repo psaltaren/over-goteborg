@@ -629,6 +629,8 @@ export async function startGame(root: HTMLElement, options: GameOptions = {}): P
       // Said once as the trams take up Västtrafik's word or lose it.
       const status = live.status;
       if (status !== liveWas) {
+        // A relay without Västtrafik's key: nothing to turn on, so no switch for it.
+        hud.realButton.hidden = status === 'unavailable';
         if (status === 'live') hud.say(text.tramReal.on, 4);
         else if (status === 'failed' && !liveFailTold) { liveFailTold = true; hud.say(text.tramReal.failed, 5); }
         liveWas = status;

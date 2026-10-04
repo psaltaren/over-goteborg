@@ -164,8 +164,9 @@ export class Vasttrafik {
         limit: '100',
         platforms: area.platforms.join(','),
       });
-      const body = await this.get(`/pr/v4/stop-areas/${area.gid}/departures?${query}`, true) as { results?: ApiDeparture[] } | null;
-      const departures = (body?.results ?? []).map(trimDeparture).filter((d): d is VtDeparture => d !== null);
+      const body = await this.get(`/pr/v4/stop-areas/${area.gid}/departures?${query}`, true) as { results?: unknown } | null;
+      const results = Array.isArray(body?.results) ? (body.results as ApiDeparture[]) : [];
+      const departures = results.map(trimDeparture).filter((d): d is VtDeparture => d !== null);
       this.lists.set(area.gid, { departures, at: Date.now() });
     }));
     const failures = results.flatMap((r) => (r.status === 'rejected' ? [r.reason] : []));
@@ -179,8 +180,9 @@ export class Vasttrafik {
   /** The traffic situations on the trams in the area. */
   async situations(): Promise<VtSituation[]> {
     if (!this.budget(1)) throw new SourceError('ext-api.vasttrafik.se: own budget spent', 429, 60_000);
-    const list = await this.get('/ts/v1/traffic-situations', false) as ApiSituation[] | null;
-    return trimSituations(list ?? [], Date.now() / 1000);
+    const list = await this.get('/ts/v1/traffic-situations', false);
+    if (!Array.isArray(list)) throw new SourceError(`${new URL(this.base).host} situations not a list`, 502, 0);
+    return trimSituations(list as ApiSituation[], Date.now() / 1000);
   }
 
   /** A GET with the token, again with a new token if it was refused; 404 (no traffic there now) as null when `empty`. */

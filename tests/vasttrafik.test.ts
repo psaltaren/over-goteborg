@@ -107,12 +107,15 @@ test('a refused token is fetched again once', async () => {
   expect(calls.filter((c) => c.url.endsWith('/token')).length).toBe(2);
 });
 
-test('without the key the trams feed asks nobody', async () => {
+test('without the key the trams\' feeds are off, and nobody is asked', async () => {
   const calls = vasttrafik();
   advance(120);
   const feeds = createFeeds({ waitUntil, log: () => {} });
-  const answer = await feeds.handle(new URL('http://relay/feeds/vt'));
-  expect(answer!.status).toBe(502);
+  for (const name of ['vt', 'situations']) {
+    const answer = await feeds.handle(new URL(`http://relay/feeds/${name}`));
+    expect(answer!.status).toBe(404);
+    expect(await answer!.json()).toEqual({ error: 'off' });
+  }
   expect(calls.length).toBe(0);
 });
 

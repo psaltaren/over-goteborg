@@ -4,7 +4,7 @@
 // asks Västtrafik once for everyone. Without a relay, without word for a few minutes, or turned off, the next half
 // hour is planned as the timetable has it and the trams are back on it as they set out. No three.js.
 
-import { relayFeed } from '../relay';
+import { feedOff, relayFeed } from '../relay';
 import type { Blocks } from './blocks';
 import { LiveMatcher, type LiveDeparture } from './liveMatch';
 import { LivePlanner, type Live } from './livePlan';
@@ -23,11 +23,15 @@ export interface Situation {
   stops: string[];
 }
 
-/** What the trams follow: Västtrafik live, the timetable by choice, the timetable while waiting for word, or for want of it. */
-export type LiveStatus = 'live' | 'off' | 'waiting' | 'failed';
+/**
+ * What the trams follow: Västtrafik live, the timetable by choice, the timetable while waiting for word or for want of
+ * it, or the timetable because the relay has no key for Västtrafik (`unavailable`: nothing to choose).
+ */
+export type LiveStatus = 'live' | 'off' | 'waiting' | 'failed' | 'unavailable';
 
-/** How often the departures are asked for, and the situations, in ms. */
+/** How often the departures are asked for, and the situations, in ms; and how often a relay without the key is asked again. */
 const POLL = 30_000;
+const POLL_OFF = 10 * 60_000;
 const SITUATIONS = 5 * 60_000;
 /** How old the relay's copy may be before the trams go back to the timetable (seconds): a few of the relay's minutes. */
 const STALE = 4 * 60;
@@ -73,6 +77,7 @@ export class LiveTrams {
 
   /** What the trams follow now. */
   get status(): LiveStatus {
+    if (feedOff('vt')) return 'unavailable';
     if (!this.wanted) return 'off';
     if (this.fresh(Date.now() / 1000)) return 'live';
     return this.failures >= 2 ? 'failed' : 'waiting';
@@ -122,8 +127,9 @@ export class LiveTrams {
         this.failures = 0;
         // New word: planned with it at once rather than at the next turn.
         this.planAt = -Infinity;
-      } else this.failures++;
-      if (now >= this.nextSituations) {
+      } else if (feedOff('vt')) this.nextPoll = now + POLL_OFF;
+      else this.failures++;
+      if (now >= this.nextSituations && !feedOff('vt')) {
         this.nextSituations = now + SITUATIONS;
         const situations = await relayFeed<Situation[]>('situations');
         if (situations && Array.isArray(situations.data)) this.situations = situations.data;

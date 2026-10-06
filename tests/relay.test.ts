@@ -33,6 +33,16 @@ test('a feed the relay has no key for is off, and the relay is not taken for dow
   expect(calls.length).toBe(1);
 });
 
+test('a relay older than the game, which does not know a feed, is not taken for down either', async () => {
+  process.env.VITE_GHOSTS_URL = 'ws://relay.test/ghosts';
+  stub(() => new Response('Unknown feed', { status: 404 }));
+  expect(await relayFeed('situations')).toBeNull();
+  expect(feedOff('situations')).toBe(true);
+  const calls = stub(() => Response.json({ at: 2_000_000, data: { current: null } }));
+  expect(await relayFeed('weather')).not.toBeNull();
+  expect(calls.length).toBe(1);
+});
+
 test('without a relay there are no real trains and SL is never asked', async () => {
   const calls = stub(() => Response.json({ departures: [] }));
   expect(realTrainsAvailable()).toBe(false);

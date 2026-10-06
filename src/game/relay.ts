@@ -62,18 +62,19 @@ export async function relayFeed<T>(name: string, signal?: AbortSignal): Promise<
   if (!base || Date.now() < relayDownUntil) return null;
   try {
     const response = await fetchWithTimeout(`${base}/feeds/${name}`, signal);
+    // A feed the relay has not got (it has no key for the source, or it is older than the game and does not know the
+    // feed): off, and the relay is fine for the rest.
+    if (response.status === 404) {
+      offFeeds.add(name);
+      return null;
+    }
     const body = (await response.json()) as { data: T; at: number } | { error?: string };
     if (response.ok && 'data' in body) {
       offFeeds.delete(name);
       return { data: body.data, at: body.at / 1000 };
     }
-    // The relay answered but the source is down or limiting it: the relay retries on its own. Or it has no key for the
-    // source at all: the feed is off, and the relay is fine.
+    // The relay answered but the source is down or limiting it: the relay retries on its own.
     if ('error' in body && body.error === 'unavailable') return null;
-    if ('error' in body && body.error === 'off') {
-      offFeeds.add(name);
-      return null;
-    }
   } catch {
     if (signal?.aborted) return null;
   }
